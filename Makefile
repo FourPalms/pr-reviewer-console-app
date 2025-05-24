@@ -20,8 +20,13 @@ clean:
 	go clean
 
 # Run the application
+# Usage: make run PROMPT="Your prompt here"
 run:
-	go run ./cmd/agent
+	@if [ -z "$(PROMPT)" ]; then \
+		go run ./cmd/agent; \
+	else \
+		go run ./cmd/agent "$(PROMPT)"; \
+	fi
 
 # Install dependencies
 deps:

@@ -50,6 +50,10 @@ agent-runner/
    ```
    or
    ```
+   make run PROMPT="Your prompt here"
+   ```
+   or (for interactive mode)
+   ```
    make run
    ```
 
