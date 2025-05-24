@@ -70,7 +70,14 @@ func main() {
 }
 
 func handlePrompt(client *openai.Client, prompt string) {
-	fmt.Println("Sending prompt to OpenAI...")
+	// Count tokens in the prompt first
+	tokenCount, err := client.CountText(prompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error counting tokens: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Sending prompt to OpenAI... (%d tokens)\n", tokenCount)
 	
 	response, err := client.Complete(context.Background(), prompt)
 	if err != nil {

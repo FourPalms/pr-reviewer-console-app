@@ -8,6 +8,9 @@ import (
 	"io"
 	"net/http"
 	"time"
+	
+	"github.com/jeremyhunt/agent-runner/tokens"
+	"github.com/sashabaranov/go-openai"
 )
 
 // Client represents an OpenAI API client
@@ -16,6 +19,7 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	model      string
+	tokenCounter *tokens.Counter
 }
 
 // NewClient creates a new OpenAI client
@@ -27,19 +31,14 @@ func NewClient(apiKey string, model string) *Client {
 		},
 		baseURL: "https://api.openai.com/v1",
 		model: model,
+		tokenCounter: tokens.NewCounter(),
 	}
 }
 
 // ChatCompletionRequest represents a request to the chat completion API
 type ChatCompletionRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-}
-
-// Message represents a chat message
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Model    string                   `json:"model"`
+	Messages []openai.ChatCompletionMessage `json:"messages"`
 }
 
 // ChatCompletionResponse represents a response from the chat completion API
@@ -58,14 +57,18 @@ type ChatCompletionResponse struct {
 
 // Complete sends a prompt to the OpenAI API and returns the response
 func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
-	reqBody := ChatCompletionRequest{
-		Model: c.model,
-		Messages: []Message{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
+	// Create the message
+	messages := []openai.ChatCompletionMessage{
+		{
+			Role:    "user",
+			Content: prompt,
 		},
+	}
+	
+	// Create the request body
+	reqBody := ChatCompletionRequest{
+		Model:    c.model,
+		Messages: messages,
 	}
 
 	reqBytes, err := json.Marshal(reqBody)
@@ -107,4 +110,14 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	}
 
 	return result.Choices[0].Message.Content, nil
+}
+
+// CountTokens counts the number of tokens in a slice of chat messages
+func (c *Client) CountTokens(messages []openai.ChatCompletionMessage) (int, error) {
+	return c.tokenCounter.CountMessages(messages, c.model)
+}
+
+// CountText counts the number of tokens in a text string
+func (c *Client) CountText(text string) (int, error) {
+	return c.tokenCounter.CountText(text, c.model)
 }
