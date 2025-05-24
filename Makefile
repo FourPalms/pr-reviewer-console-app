@@ -1,4 +1,4 @@
-.PHONY: build test clean run setup-hooks check clone-repo pull-repo
+.PHONY: build test clean run setup-hooks check clone-repo pull-repo review
 
 # Default Go build flags
 GOFLAGS := -v
@@ -80,6 +80,20 @@ pull-repo:
 	git pull --depth 1;\
 	echo "Pull completed successfully."
 
+# Set up a repository for review
+# Usage: make review REPO=username/repo-name PR-BRANCH=branch-name
+review:
+	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
+	if [ ! -d ".context/projects/$$REPO_NAME" ]; then \
+		echo "Repository $$REPO_NAME not found, cloning first...";\
+		$(MAKE) clone-repo REPO=$(REPO);\
+	fi; \
+	cd .context/projects/$$REPO_NAME && git checkout master && git pull --depth 1 && \
+	echo "Setting up PR branch $(PR-BRANCH)..." && \
+	git fetch origin $(PR-BRANCH) --depth 1 && git checkout $(PR-BRANCH) && \
+	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
+	cd $(CURDIR) && $(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -94,4 +108,5 @@ help:
 	@echo "  setup-hooks - Configure Git to use project hooks"
 	@echo "  clone-repo  - Clone a GitHub repository (usage: make clone-repo REPO=username/repo-name)"
 	@echo "  pull-repo   - Pull latest changes from main/master branch (usage: make pull-repo REPO=username/repo-name)"
+	@echo "  review      - Set up repo for review (usage: make review REPO=username/repo-name PR-BRANCH=branch-name)"
 	@echo "  help        - Show this help message"
