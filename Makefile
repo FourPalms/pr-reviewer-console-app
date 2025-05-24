@@ -92,29 +92,11 @@ review:
 	echo "Setting up PR branch $(PR-BRANCH)..." && \
 	git fetch origin $(PR-BRANCH) --depth 100 && git checkout $(PR-BRANCH) && \
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
-	echo "Generating diff between master and $(PR-BRANCH)..." && \
+	cd $(CURDIR) && \
+	$(MAKE) diff-pr REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
+	$(MAKE) list-changes REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'` && \
-	mkdir -p $(CURDIR)/.context/reviews && \
-	git diff master..$(PR-BRANCH) > $(CURDIR)/.context/reviews/$$TICKET-diff.md && \
-	echo "Diff generated at .context/reviews/$$TICKET-diff.md" && \
-	echo "Generating list of changed files..." && \
-	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Added Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Stats" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --stat master..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "File list generated at .context/reviews/$$TICKET-files.md" && \
-	cd $(CURDIR) && $(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
+	$(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
 
 # Generate a diff between master and PR branch
 # Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number
