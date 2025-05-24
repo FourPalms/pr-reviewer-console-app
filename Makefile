@@ -159,18 +159,23 @@ list-changes:
 	cd .context/projects/$$REPO_NAME && \
 	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "Fetching branches with more history..." && \
+	git fetch origin master --depth 100 && \
+	git fetch origin $(PR-BRANCH) --depth 100 && \
+	echo "Finding common ancestor between master and $(PR-BRANCH)..." && \
+	MERGE_BASE=$$(git merge-base master $(PR-BRANCH)) && \
 	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "## Added Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status master..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "## Stats" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --stat master..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --stat $$MERGE_BASE..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
 	echo "File list generated at .context/reviews/$$TICKET-files.md"
 
