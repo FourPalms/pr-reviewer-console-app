@@ -1,4 +1,4 @@
-.PHONY: build test clean run
+.PHONY: build test clean run setup-hooks
 
 # Default Go build flags
 GOFLAGS := -v
@@ -35,14 +35,20 @@ fmt:
 lint:
 	go vet ./...
 
+# Setup Git hooks
+setup-hooks:
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed successfully!"
+
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  build   - Build the application"
-	@echo "  test    - Run all tests"
-	@echo "  clean   - Clean build artifacts"
-	@echo "  run     - Run the application"
-	@echo "  deps    - Install dependencies"
-	@echo "  fmt     - Format code"
-	@echo "  lint    - Run linter"
-	@echo "  help    - Show this help message"
+	@echo "  build       - Build the application"
+	@echo "  test        - Run all tests"
+	@echo "  clean       - Clean build artifacts"
+	@echo "  run         - Run the application"
+	@echo "  deps        - Install dependencies"
+	@echo "  fmt         - Format code"
+	@echo "  lint        - Run linter"
+	@echo "  setup-hooks - Configure Git to use project hooks"
+	@echo "  help        - Show this help message"

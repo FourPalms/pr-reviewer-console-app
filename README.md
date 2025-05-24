@@ -74,15 +74,28 @@ Then type your prompts at the prompt and press Enter. Type `exit` to quit.
 The project includes a Makefile with several useful targets:
 
 ```
-make build    # Build the application
-make test     # Run all tests
-make clean    # Clean build artifacts
-make run      # Run the application
-make deps     # Install dependencies
-make fmt      # Format code
-make lint     # Run linter
-make help     # Show help message
+make build        # Build the application
+make test         # Run all tests
+make clean        # Clean build artifacts
+make run          # Run the application
+make deps         # Install dependencies
+make fmt          # Format code
+make lint         # Run linter
+make setup-hooks  # Configure Git to use project hooks
+make help         # Show help message
 ```
+
+## Git Hooks
+
+This project includes Git hooks to ensure code quality. The pre-commit hook runs formatting, linting, and tests before allowing commits.
+
+To set up the Git hooks, run:
+
+```
+make setup-hooks
+```
+
+This configures Git to use the hooks in the `.githooks` directory.
 
 ## Testing
 

@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Pre-commit hook to run linting and tests before allowing a commit
+#
+# To enable this hook, run:
+# git config core.hooksPath .githooks
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+echo "${YELLOW}Running pre-commit checks...${NC}"
+
+# Get staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "\.go$")
+
+# Skip if no Go files are staged
+if [ -z "$STAGED_GO_FILES" ]; then
+    echo "${GREEN}No Go files staged. Skipping checks.${NC}"
+    exit 0
+fi
+
+echo "${YELLOW}Running go fmt...${NC}"
+go fmt ./...
+if [ $? -ne 0 ]; then
+    echo "${RED}go fmt failed. Please fix formatting issues before committing.${NC}"
+    exit 1
+fi
+
+echo "${YELLOW}Running go vet...${NC}"
+go vet ./...
+if [ $? -ne 0 ]; then
+    echo "${RED}go vet failed. Please fix issues before committing.${NC}"
+    exit 1
+fi
+
+echo "${YELLOW}Running tests...${NC}"
+go test ./...
+if [ $? -ne 0 ]; then
+    echo "${RED}Tests failed. Please fix failing tests before committing.${NC}"
+    exit 1
+fi
+
+# If we get here, all checks passed
+echo "${GREEN}All pre-commit checks passed!${NC}"
+exit 0
