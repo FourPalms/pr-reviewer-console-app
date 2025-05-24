@@ -1,4 +1,4 @@
-.PHONY: build test clean run setup-hooks check clone-repo pull-repo review diff-pr
+.PHONY: build test clean run setup-hooks check clone-repo pull-repo review diff-pr list-changes
 
 # Default Go build flags
 GOFLAGS := -v
@@ -90,13 +90,30 @@ review:
 	fi; \
 	cd .context/projects/$$REPO_NAME && git checkout master && git pull --depth 1 && \
 	echo "Setting up PR branch $(PR-BRANCH)..." && \
-	git fetch origin $(PR-BRANCH) --depth 1 && git checkout $(PR-BRANCH) && \
+	git fetch origin $(PR-BRANCH) --depth 100 && git checkout $(PR-BRANCH) && \
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
 	echo "Generating diff between master and $(PR-BRANCH)..." && \
 	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'` && \
 	mkdir -p $(CURDIR)/.context/reviews && \
 	git diff master..$(PR-BRANCH) > $(CURDIR)/.context/reviews/$$TICKET-diff.md && \
 	echo "Diff generated at .context/reviews/$$TICKET-diff.md" && \
+	echo "Generating list of changed files..." && \
+	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Added Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Stats" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --stat master..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "File list generated at .context/reviews/$$TICKET-files.md" && \
 	cd $(CURDIR) && $(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
 
 # Generate a diff between master and PR branch
@@ -115,9 +132,47 @@ diff-pr:
 	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $$TICKET)..."; \
 	mkdir -p .context/reviews; \
 	cd .context/projects/$$REPO_NAME && \
-	echo "Generating diff between master and $(PR-BRANCH)..." && \
-	git diff master..$(PR-BRANCH) > ../../../.context/reviews/$$TICKET-diff.md && \
+	echo "Fetching branches with more history..." && \
+	git fetch origin master --depth 100 && \
+	git fetch origin $(PR-BRANCH) --depth 100 && \
+	echo "Finding common ancestor between master and $(PR-BRANCH)..." && \
+	MERGE_BASE=$$(git merge-base master $(PR-BRANCH)) && \
+	echo "Generating diff from common ancestor to $(PR-BRANCH)..." && \
+	git diff $$MERGE_BASE..$(PR-BRANCH) > ../../../.context/reviews/$$TICKET-diff.md && \
 	echo "Diff generated at .context/reviews/$$TICKET-diff.md"
+
+# List changed files in a PR
+# Usage: make list-changes REPO=username/repo-name PR-BRANCH=username/ticket-number
+list-changes:
+	@if [ -z "$(REPO)" ]; then \
+		echo "Error: REPO parameter is required. Usage: make list-changes REPO=username/repo-name PR-BRANCH=username/ticket-number"; \
+		exit 1; \
+	fi
+	@if [ -z "$(PR-BRANCH)" ]; then \
+		echo "Error: PR-BRANCH parameter is required. Usage: make list-changes REPO=username/repo-name PR-BRANCH=username/ticket-number"; \
+		exit 1; \
+	fi
+	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
+	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'`; \
+	echo "Listing changed files for PR branch $(PR-BRANCH) (Ticket: $$TICKET)..."; \
+	mkdir -p $(CURDIR)/.context/reviews; \
+	cd .context/projects/$$REPO_NAME && \
+	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Added Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --name-status master..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "## Stats" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	git diff --stat master..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "File list generated at .context/reviews/$$TICKET-files.md"
 
 # Help target
 help:
@@ -135,4 +190,5 @@ help:
 	@echo "  pull-repo   - Pull latest changes from main/master branch (usage: make pull-repo REPO=username/repo-name)"
 	@echo "  review      - Set up repo for review (usage: make review REPO=username/repo-name PR-BRANCH=branch-name)"
 	@echo "  diff-pr     - Generate a diff between master and PR branch (usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number)"
+	@echo "  list-changes - List changed files in a PR (usage: make list-changes REPO=username/repo-name PR-BRANCH=username/ticket-number)"
 	@echo "  help        - Show this help message"
