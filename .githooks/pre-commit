@@ -44,6 +44,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "${YELLOW}Checking compilation...${NC}"
+go build -o /dev/null ./...
+if [ $? -ne 0 ]; then
+    echo "${RED}Compilation failed. Please fix compilation errors before committing.${NC}"
+    exit 1
+fi
+
 echo "${YELLOW}Running tests...${NC}"
 go test ./...
 if [ $? -ne 0 ]; then

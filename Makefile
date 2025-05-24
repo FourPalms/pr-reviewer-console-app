@@ -1,4 +1,4 @@
-.PHONY: build test clean run setup-hooks
+.PHONY: build test clean run setup-hooks check
 
 # Default Go build flags
 GOFLAGS := -v
@@ -40,6 +40,10 @@ fmt:
 lint:
 	go vet ./...
 
+# Check compilation without producing executable
+check:
+	go build -o /dev/null ./...
+
 # Setup Git hooks
 setup-hooks:
 	git config core.hooksPath .githooks
@@ -55,5 +59,6 @@ help:
 	@echo "  deps        - Install dependencies"
 	@echo "  fmt         - Format code"
 	@echo "  lint        - Run linter"
+	@echo "  check       - Compile without producing executable"
 	@echo "  setup-hooks - Configure Git to use project hooks"
 	@echo "  help        - Show this help message"

@@ -85,6 +85,7 @@ make run          # Run the application
 make deps         # Install dependencies
 make fmt          # Format code
 make lint         # Run linter
+make check        # Compile without producing executable
 make setup-hooks  # Configure Git to use project hooks
 make help         # Show help message
 ```
