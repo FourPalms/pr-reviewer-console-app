@@ -30,15 +30,27 @@ agent-runner/
    ```
 3. Install dependencies:
    ```
+   make deps
+   ```
+   or
+   ```
    go mod tidy
    ```
 4. Build the application:
+   ```
+   make build
+   ```
+   or
    ```
    go build -o bin/agent ./cmd/agent
    ```
 5. Run the application:
    ```
    ./bin/agent "Your prompt here"
+   ```
+   or
+   ```
+   make run
    ```
 
 ## Usage
@@ -57,6 +69,37 @@ agent-runner/
 
 Then type your prompts at the prompt and press Enter. Type `exit` to quit.
 
+## Makefile
+
+The project includes a Makefile with several useful targets:
+
+```
+make build    # Build the application
+make test     # Run all tests
+make clean    # Clean build artifacts
+make run      # Run the application
+make deps     # Install dependencies
+make fmt      # Format code
+make lint     # Run linter
+make help     # Show help message
+```
+
+## Testing
+
+Run the test suite using the Makefile:
+
+```
+make test
+```
+
+Or run tests directly with Go:
+
+```
+go test ./...
+```
+
 ## Dependencies
 
 - github.com/joho/godotenv - For loading environment variables from .env file
+- github.com/pkoukk/tiktoken-go - For token counting
+- github.com/sashabaranov/go-openai - For OpenAI API types
