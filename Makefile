@@ -92,6 +92,11 @@ review:
 	echo "Setting up PR branch $(PR-BRANCH)..." && \
 	git fetch origin $(PR-BRANCH) --depth 1 && git checkout $(PR-BRANCH) && \
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
+	echo "Generating diff between master and $(PR-BRANCH)..." && \
+	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'` && \
+	mkdir -p $(CURDIR)/.context/reviews && \
+	git diff master..$(PR-BRANCH) > $(CURDIR)/.context/reviews/$$TICKET-diff.md && \
+	echo "Diff generated at .context/reviews/$$TICKET-diff.md" && \
 	cd $(CURDIR) && $(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
 
 # Generate a diff between master and PR branch
