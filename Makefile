@@ -1,4 +1,4 @@
-.PHONY: build test clean run setup-hooks check clone-repo pull-repo review diff-pr list-changes
+.PHONY: build test clean run run-review setup-hooks check clone-repo pull-repo review diff-pr list-changes
 
 # Default Go build flags
 GOFLAGS := -v
@@ -27,6 +27,15 @@ run:
 	else \
 		go run ./cmd/agent "$(PROMPT)"; \
 	fi
+
+# Run the application in review mode
+# Usage: make run-review TICKET=WIRE-1231
+run-review:
+	@if [ -z "$(TICKET)" ]; then \
+		echo "Error: TICKET parameter is required. Usage: make run-review TICKET=WIRE-1231"; \
+		exit 1; \
+	fi
+	@go run ./cmd/agent --review --ticket=$(TICKET)
 
 # Install dependencies
 deps:
@@ -96,7 +105,7 @@ review:
 	$(MAKE) diff-pr REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	$(MAKE) list-changes REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'` && \
-	$(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
+	$(MAKE) run-review TICKET=$$TICKET
 
 # Generate a diff between master and PR branch
 # Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number
@@ -168,6 +177,7 @@ help:
 	@echo "  test        - Run all tests"
 	@echo "  clean       - Clean build artifacts"
 	@echo "  run         - Run the application"
+	@echo "  run-review  - Run the application in review mode (usage: make run-review TICKET=WIRE-1231)"
 	@echo "  deps        - Install dependencies"
 	@echo "  fmt         - Format code"
 	@echo "  lint        - Run linter"
