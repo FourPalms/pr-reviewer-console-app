@@ -87,7 +87,7 @@ make help         # Show help message
 
 ## Git Hooks
 
-This project includes Git hooks to ensure code quality. The pre-commit hook runs formatting, linting, and tests before allowing commits.
+This project includes Git hooks to ensure code quality. The pre-commit hook runs formatting, linting, and tests on all Go files in the project before allowing commits, ensuring the entire codebase maintains quality standards.
 
 To set up the Git hooks, run:
 

@@ -13,13 +13,21 @@ NC='\033[0m' # No Color
 
 echo "${YELLOW}Running pre-commit checks...${NC}"
 
-# Get staged Go files
+# Check if there are any Go files in the project
+GO_FILES=$(find . -name "*.go" | grep -v "/\.git/")
+
+# Skip if no Go files exist
+if [ -z "$GO_FILES" ]; then
+    echo "${GREEN}No Go files found in project. Skipping checks.${NC}"
+    exit 0
+fi
+
+# Check if any Go files are staged
 STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "\.go$")
 
-# Skip if no Go files are staged
+# If no Go files are staged, but we're committing other files, still run checks on all Go files
 if [ -z "$STAGED_GO_FILES" ]; then
-    echo "${GREEN}No Go files staged. Skipping checks.${NC}"
-    exit 0
+    echo "${YELLOW}No Go files staged, but running checks on all Go files anyway...${NC}"
 fi
 
 echo "${YELLOW}Running go fmt...${NC}"
