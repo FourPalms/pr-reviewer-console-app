@@ -1,4 +1,4 @@
-.PHONY: build test clean run setup-hooks check clone-repo pull-repo review
+.PHONY: build test clean run setup-hooks check clone-repo pull-repo review diff-pr
 
 # Default Go build flags
 GOFLAGS := -v
@@ -94,6 +94,26 @@ review:
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
 	cd $(CURDIR) && $(MAKE) run PROMPT="What happened to Babylon 4 in one sentence"
 
+# Generate a diff between master and PR branch
+# Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number
+diff-pr:
+	@if [ -z "$(REPO)" ]; then \
+		echo "Error: REPO parameter is required. Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number"; \
+		exit 1; \
+	fi
+	@if [ -z "$(PR-BRANCH)" ]; then \
+		echo "Error: PR-BRANCH parameter is required. Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number"; \
+		exit 1; \
+	fi
+	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
+	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'`; \
+	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $$TICKET)..."; \
+	mkdir -p .context/reviews; \
+	cd .context/projects/$$REPO_NAME && \
+	echo "Generating diff between master and $(PR-BRANCH)..." && \
+	git diff master..$(PR-BRANCH) > ../../../.context/reviews/$$TICKET-diff.md && \
+	echo "Diff generated at .context/reviews/$$TICKET-diff.md"
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -109,4 +129,5 @@ help:
 	@echo "  clone-repo  - Clone a GitHub repository (usage: make clone-repo REPO=username/repo-name)"
 	@echo "  pull-repo   - Pull latest changes from main/master branch (usage: make pull-repo REPO=username/repo-name)"
 	@echo "  review      - Set up repo for review (usage: make review REPO=username/repo-name PR-BRANCH=branch-name)"
+	@echo "  diff-pr     - Generate a diff between master and PR branch (usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number)"
 	@echo "  help        - Show this help message"
