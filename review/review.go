@@ -48,7 +48,7 @@ func NewReviewContext(ticket string, client *openai.Client) *ReviewContext {
 		Ticket:       ticket,
 		DiffPath:     filepath.Join(".context", "reviews", ticket+"-diff.md"),
 		FilesPath:    filepath.Join(".context", "reviews", ticket+"-files.md"),
-		MaxTokens:    16000, // Default for GPT-4
+		MaxTokens:    120000, // Default for GPT-4o
 		Model:        "gpt-4o",
 		Client:       client,
 		TokenCounter: tokens.NewCounter(),
