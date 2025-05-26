@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/jeremyhunt/agent-runner/openai"
@@ -185,17 +186,29 @@ Here is a list of the files that were changed:
 Here is the full diff of the changes:
 %s
 
-Please provide:
-1. A comprehensive summary of these changes in one paragraph.
-2. The flow of logic through the files and functions formatted nicely as a trace.
-3. A recommended order for analyzing these files to understand the original implementation before the changes. Consider the architecture patterns where:
-   - DataObjects define data structures
-   - Repositories handle data access
-   - Domains contain business logic
-   - Services orchestrate operations
-   - ApplicationServices provide functionality across domains
+Please provide your analysis in the following format with EXACTLY these section headings:
 
-For the recommended analysis order, explain briefly why you chose this sequence and how it follows the execution flow of the code.
+## 1. Comprehensive Summary
+[Your one-paragraph summary of the changes here]
+
+## 2. Flow of Logic
+[Your trace of the logic flow through files and functions here]
+
+## 3. Recommended File Order
+[Your recommended order for analyzing the files here]
+
+For the recommended file order section:
+- Always include the COMPLETE file paths exactly as they appear in the file list above
+- List each file path inside backticks
+- Number each file (1, 2, 3, etc.)
+- Include a brief explanation of why you chose this sequence
+
+Consider the architecture patterns where:
+- DataObjects define data structures
+- Repositories handle data access
+- Domains contain business logic
+- Services orchestrate operations
+- ApplicationServices provide functionality across domains
 
 Format your response in markdown with clear sections and code references.`,
 		w.Ctx.FilesContent, w.Ctx.DiffContent)
@@ -315,6 +328,47 @@ func (w *Workflow) CollectOriginalFileContents() error {
 	return nil
 }
 
+// ParseRecommendedFileOrder extracts the recommended file analysis order from the initial discovery
+func (w *Workflow) ParseRecommendedFileOrder() ([]string, error) {
+	// Read the initial discovery file
+	initialDiscoveryPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-initial-discovery.md", w.Ctx.Ticket))
+	content, err := os.ReadFile(initialDiscoveryPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read initial discovery: %w", err)
+	}
+
+	// Convert to string for easier processing
+	contentStr := string(content)
+
+	// Find the recommended file order section using the exact heading we specified
+	orderSectionPattern := "(?s)## 3. Recommended File Order.*?(?:\\n##|$)"
+	orderSectionRegex := regexp.MustCompile(orderSectionPattern)
+	orderSection := orderSectionRegex.FindString(contentStr)
+	if orderSection == "" {
+		return nil, fmt.Errorf("could not find recommended file order section in initial discovery")
+	}
+
+	// Extract filenames using regex
+	// Looking for patterns like: `app/PayrollServices/Silo/Client/Domain/PayCycleDomain.php`
+	filePattern := "`([^`]+\\.php)`"
+	fileRegex := regexp.MustCompile(filePattern)
+	matches := fileRegex.FindAllStringSubmatch(orderSection, -1)
+
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("could not find any filenames in recommended order section")
+	}
+
+	// Extract the filenames from the regex matches
+	files := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) >= 2 {
+			files = append(files, match[1])
+		}
+	}
+
+	return files, nil
+}
+
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Step 1: Count tokens
@@ -343,6 +397,18 @@ func (w *Workflow) Run() error {
 		return fmt.Errorf("error collecting original file contents: %w", err)
 	}
 	fmt.Println("Original file content collection completed successfully.")
+
+	// DEBUG: Parse recommended file order
+	fmt.Println("DEBUG: Parsing recommended file order...")
+	files, err := w.ParseRecommendedFileOrder()
+	if err != nil {
+		fmt.Printf("Error parsing recommended file order: %v\n", err)
+	} else {
+		fmt.Println("Recommended file order:")
+		for i, file := range files {
+			fmt.Printf("%d. %s\n", i+1, file)
+		}
+	}
 
 	return nil
 }
