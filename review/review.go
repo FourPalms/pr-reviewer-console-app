@@ -177,7 +177,7 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 
 // InitialDiscoveryPrompt generates the prompt for the initial discovery step
 func (w *Workflow) InitialDiscoveryPrompt() string {
-	return fmt.Sprintf(`You are a senior software engineer reviewing a pull request.
+	return fmt.Sprintf(`You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns.
 
 Here is a list of the files that were changed:
 %s
@@ -188,6 +188,14 @@ Here is the full diff of the changes:
 Please provide:
 1. A comprehensive summary of these changes in one paragraph.
 2. The flow of logic through the files and functions formatted nicely as a trace.
+3. A recommended order for analyzing these files to understand the original implementation before the changes. Consider the architecture patterns where:
+   - DataObjects define data structures
+   - Repositories handle data access
+   - Domains contain business logic
+   - Services orchestrate operations
+   - ApplicationServices provide functionality across domains
+
+For the recommended analysis order, explain briefly why you chose this sequence and how it follows the execution flow of the code.
 
 Format your response in markdown with clear sections and code references.`,
 		w.Ctx.FilesContent, w.Ctx.DiffContent)
