@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jeremyhunt/agent-runner/config"
@@ -18,6 +19,8 @@ func main() {
 	modelFlag := flag.String("model", "", "OpenAI model to use (overrides env variable)")
 	reviewFlag := flag.Bool("review", false, "Run PR review workflow")
 	ticketFlag := flag.String("ticket", "", "Ticket number for PR review (e.g., WIRE-1231)")
+	repoFlag := flag.String("repo", "", "Repository name for PR review (e.g., BambooHR/payroll-gateway)")
+	branchFlag := flag.String("branch", "", "PR branch name for review (e.g., username/WIRE-1231)")
 
 	// Parse flags
 	flag.Parse()
@@ -47,11 +50,11 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		
-		handleReview(client, *ticketFlag)
+
+		handleReview(client, *ticketFlag, *repoFlag, *branchFlag)
 		return
 	}
-	
+
 	// Check if prompt was provided as command line argument
 	if flag.NArg() > 0 {
 		// Join all non-flag arguments as the prompt
@@ -105,21 +108,37 @@ func handlePrompt(client *openai.Client, prompt string) {
 }
 
 // handleReview runs the PR review workflow
-func handleReview(client *openai.Client, ticket string) {
+func handleReview(client *openai.Client, ticket string, repo string, branch string) {
 	fmt.Printf("Starting PR review for ticket %s...\n", ticket)
-	
+
 	// Create review context
 	ctx := review.NewReviewContext(ticket, client)
-	
+
+	// Set repository directory and branch if provided
+	if repo != "" {
+		// Extract repo name from full path (e.g., "BambooHR/payroll-gateway" -> "payroll-gateway")
+		repoName := repo
+		if idx := strings.LastIndex(repo, "/"); idx != -1 {
+			repoName = repo[idx+1:]
+		}
+		ctx.RepoDir = filepath.Join(".context", "projects", repoName)
+		fmt.Printf("Using repository at %s\n", ctx.RepoDir)
+	}
+
+	if branch != "" {
+		ctx.Branch = branch
+		fmt.Printf("Using PR branch %s\n", ctx.Branch)
+	}
+
 	// Create workflow
 	workflow := review.NewWorkflow(ctx)
-	
+
 	// Run the workflow
 	err := workflow.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running review workflow: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("PR review completed successfully.")
 }

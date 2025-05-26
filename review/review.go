@@ -2,10 +2,13 @@
 package review
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/jeremyhunt/agent-runner/openai"
 	"github.com/jeremyhunt/agent-runner/tokens"
@@ -21,6 +24,15 @@ type ReviewContext struct {
 
 	// FilesPath is the path to the changed files list
 	FilesPath string
+
+	// RepoDir is the path to the cloned repository
+	RepoDir string
+
+	// Branch is the PR branch name
+	Branch string
+
+	// OutputDir is the directory where output files are stored
+	OutputDir string
 
 	// MaxTokens is the maximum number of tokens allowed for the LLM context
 	MaxTokens int
@@ -44,10 +56,14 @@ type ReviewContext struct {
 
 // NewReviewContext creates a new ReviewContext with default values
 func NewReviewContext(ticket string, client *openai.Client) *ReviewContext {
+	outputDir := filepath.Join(".context", "reviews")
 	return &ReviewContext{
 		Ticket:       ticket,
-		DiffPath:     filepath.Join(".context", "reviews", ticket+"-diff.md"),
-		FilesPath:    filepath.Join(".context", "reviews", ticket+"-files.md"),
+		DiffPath:     filepath.Join(outputDir, ticket+"-diff.md"),
+		FilesPath:    filepath.Join(outputDir, ticket+"-files.md"),
+		RepoDir:      "", // Will be set when needed
+		Branch:       "", // Will be set when needed
+		OutputDir:    outputDir,
 		MaxTokens:    120000, // Default for GPT-4o
 		Model:        "gpt-4o",
 		Client:       client,
@@ -157,6 +173,120 @@ Format your response in markdown with clear sections and code references.`,
 		w.Ctx.FilesContent, w.Ctx.DiffContent)
 }
 
+// CollectOriginalFileContents reads the original content of modified and deleted files
+func (w *Workflow) CollectOriginalFileContents() error {
+	// 1. Read the files.md to get the list of modified and deleted files
+	filesContent, err := os.ReadFile(w.Ctx.FilesPath)
+	if err != nil {
+		return fmt.Errorf("failed to read files list: %w", err)
+	}
+
+	// 2. Parse the content to extract modified and deleted files
+	modifiedFiles := []string{}
+	deletedFiles := []string{}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(filesContent)))
+	section := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "## ") {
+			section = strings.TrimPrefix(line, "## ")
+			continue
+		}
+
+		// Skip empty lines, headers, and the stats section
+		if line == "" || strings.HasPrefix(line, "#") || section == "Stats" {
+			continue
+		}
+
+		if section == "Modified Files" {
+			modifiedFiles = append(modifiedFiles, line)
+		} else if section == "Deleted Files" {
+			deletedFiles = append(deletedFiles, line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error scanning files list: %w", err)
+	}
+
+	// 3. Get the merge-base (common ancestor) of main and PR branch
+	cmd := exec.Command("git", "merge-base", "main", w.Ctx.Branch)
+	cmd.Dir = w.Ctx.RepoDir
+	mergeBase, err := cmd.Output()
+	if err != nil {
+		// Try with master if main fails
+		cmd = exec.Command("git", "merge-base", "master", w.Ctx.Branch)
+		cmd.Dir = w.Ctx.RepoDir
+		mergeBase, err = cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to find merge-base: %w", err)
+		}
+	}
+	baseCommit := strings.TrimSpace(string(mergeBase))
+
+	// 4. Build the markdown content
+	var sb strings.Builder
+	sb.WriteString("# Original File Contents\n\n")
+	// We'll add the token count later
+	sb.WriteString("_Token count will be added here_\n\n")
+
+	// 5. For each modified file
+	for _, file := range modifiedFiles {
+		// Execute git command to get content from the merge-base
+		cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", baseCommit, file))
+		cmd.Dir = w.Ctx.RepoDir
+		content, err := cmd.Output()
+		if err != nil {
+			fmt.Printf("Warning: failed to get content for %s: %v\n", file, err)
+			continue
+		}
+
+		// Add to our markdown
+		sb.WriteString(fmt.Sprintf("## %s\n```php\n%s\n```\n\n", file, content))
+	}
+
+	// 6. Same for deleted files
+	for _, file := range deletedFiles {
+		cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", baseCommit, file))
+		cmd.Dir = w.Ctx.RepoDir
+		content, err := cmd.Output()
+		if err != nil {
+			fmt.Printf("Warning: failed to get content for deleted file %s: %v\n", file, err)
+			continue
+		}
+
+		sb.WriteString(fmt.Sprintf("## %s (DELETED)\n```php\n%s\n```\n\n", file, content))
+	}
+
+	// Get the content as a string
+	content := sb.String()
+
+	// 7. Count tokens
+	tokenCount, err := w.Ctx.TokenCounter.CountText(content, w.Ctx.Model)
+	if err != nil {
+		return fmt.Errorf("failed to count tokens: %w", err)
+	}
+
+	// 8. Replace the placeholder with the actual token count
+	content = strings.Replace(
+		content,
+		"_Token count will be added here_",
+		fmt.Sprintf("This file contains **%d tokens** when processed by %s.", tokenCount, w.Ctx.Model),
+		1,
+	)
+
+	// 9. Write the result to a file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-file-content.md", w.Ctx.Ticket))
+	err = os.WriteFile(outputPath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write original file content: %w", err)
+	}
+
+	fmt.Printf("Original file contents saved to %s (%d tokens)\n", outputPath, tokenCount)
+	return nil
+}
+
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Step 1: Count tokens
@@ -172,11 +302,19 @@ func (w *Workflow) Run() error {
 	err = w.RunLLMStep(
 		"Initial Discovery",
 		w.InitialDiscoveryPrompt,
-		filepath.Join(".context", "reviews", w.Ctx.Ticket+"-initial-discovery.md"),
+		filepath.Join(w.Ctx.OutputDir, w.Ctx.Ticket+"-initial-discovery.md"),
 	)
 	if err != nil {
 		return err
 	}
+
+	// Step 3: Collect original file contents
+	fmt.Println("Step 3: Collecting original file contents...")
+	err = w.CollectOriginalFileContents()
+	if err != nil {
+		return fmt.Errorf("error collecting original file contents: %w", err)
+	}
+	fmt.Println("Original file content collection completed successfully.")
 
 	return nil
 }
