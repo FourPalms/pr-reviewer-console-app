@@ -117,6 +117,26 @@ func (w *Workflow) CountTokens() error {
 	w.Ctx.FilesTokens = filesTokens
 	w.Ctx.TotalTokens = totalTokens
 
+	// Add token count to the diff file
+	tokenInfoDiff := fmt.Sprintf("\n\nThis diff contains **%d tokens** when processed by %s.\n\n", diffTokens, w.Ctx.Model)
+	newDiffContent := tokenInfoDiff + string(diffContent)
+	err = os.WriteFile(w.Ctx.DiffPath, []byte(newDiffContent), 0644)
+	if err != nil {
+		return fmt.Errorf("error updating diff file with token count: %w", err)
+	}
+
+	// Add token count to the files list file
+	tokenInfoFiles := fmt.Sprintf("\n\nThis file list contains **%d tokens** when processed by %s.\n\n", filesTokens, w.Ctx.Model)
+	newFilesContent := strings.Replace(string(filesContent), "\n\n## Modified Files", tokenInfoFiles+"## Modified Files", 1)
+	err = os.WriteFile(w.Ctx.FilesPath, []byte(newFilesContent), 0644)
+	if err != nil {
+		return fmt.Errorf("error updating files list with token count: %w", err)
+	}
+
+	// Update the content in context with the new versions that include token counts
+	w.Ctx.DiffContent = newDiffContent
+	w.Ctx.FilesContent = newFilesContent
+
 	// Print token information
 	fmt.Printf("Token counts for ticket %s:\n", w.Ctx.Ticket)
 	fmt.Printf("  Diff file:  %d tokens\n", diffTokens)
