@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jeremyhunt/agent-runner/openai"
 	"github.com/jeremyhunt/agent-runner/tokens"
@@ -457,42 +458,52 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 	// Create a slice to store results in the correct order
 	results := make([]analysisResult, len(orderedFiles))
-	
+
 	// Create a mutex to protect shared resources
 	var resultsMutex sync.Mutex
-	
+
 	// Create a WaitGroup to track when all files have been processed
 	var wg sync.WaitGroup
 	wg.Add(len(orderedFiles))
-	
+
 	// Create a channel for job distribution
 	jobs := make(chan int, len(orderedFiles))
-	
+
 	// Determine the number of workers (max 10)
 	numWorkers := 10
 	if len(orderedFiles) < numWorkers {
 		numWorkers = len(orderedFiles)
 	}
-	
+
+	// Create an atomic counter for active workers
+	var activeWorkers int32
+
+	// Print initial status message
+	fmt.Printf("Starting analysis of %d files using up to %d concurrent workers...\n", len(orderedFiles), numWorkers)
+
 	// Launch worker goroutines
 	for workerID := 0; workerID < numWorkers; workerID++ {
-		go func() {
+		go func(id int) {
 			// Process jobs until the channel is closed
 			for i := range jobs {
 				file := orderedFiles[i]
-				
+
+				// Increment active workers counter
+				atomic.AddInt32(&activeWorkers, 1)
+
 				// Print progress (protected by mutex to avoid garbled output)
 				resultsMutex.Lock()
-				fmt.Printf("Analyzing file %d/%d: %s\n", i+1, len(orderedFiles), file)
+				fmt.Printf("[Worker %d] Analyzing file %d/%d: %s (Active workers: %d)\n",
+					id, i+1, len(orderedFiles), file, atomic.LoadInt32(&activeWorkers))
 				resultsMutex.Unlock()
-				
+
 				// Get original file content
 				content, err := w.GetOriginalFileContent(file)
 				if err != nil {
 					resultsMutex.Lock()
 					fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
 					resultsMutex.Unlock()
-					
+
 					// Store the error result
 					results[i] = analysisResult{file: file, err: err, index: i}
 					wg.Done()
@@ -505,7 +516,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 					resultsMutex.Lock()
 					fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
 					resultsMutex.Unlock()
-					
+
 					// Store the error result
 					results[i] = analysisResult{file: file, err: err, index: i}
 					wg.Done()
@@ -514,19 +525,21 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 				// Store the successful result
 				results[i] = analysisResult{file: file, analysis: analysis, index: i}
+				// Decrement active workers counter
+				atomic.AddInt32(&activeWorkers, -1)
 				wg.Done()
 			}
-		}()
+		}(workerID)
 	}
-	
+
 	// Send jobs to the workers
 	for i := range orderedFiles {
 		jobs <- i
 	}
-	
+
 	// Close the jobs channel to signal that no more jobs are coming
 	close(jobs)
-	
+
 	// Wait for all files to be processed
 	wg.Wait()
 
@@ -536,7 +549,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 		if result.err != nil {
 			continue
 		}
-		
+
 		// Add to output
 		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", result.file, result.analysis))
 	}
