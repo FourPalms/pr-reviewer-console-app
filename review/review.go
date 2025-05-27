@@ -756,9 +756,15 @@ func (w *Workflow) GeneratePRReview() error {
 
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
+	// Load design document if specified
+	err := w.LoadDesignDocument()
+	if err != nil {
+		return fmt.Errorf("error loading design document: %w", err)
+	}
+
 	// Step 1: Count tokens
 	fmt.Println("Step 1: Counting tokens...")
-	err := w.CountTokens()
+	err = w.CountTokens()
 	if err != nil {
 		return fmt.Errorf("error counting tokens: %w", err)
 	}
