@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/sashabaranov/go-openai"
@@ -13,6 +14,8 @@ import (
 type Counter struct {
 	// Cached encoders for different models to improve performance
 	encoders map[string]*tiktoken.Tiktoken
+	// Mutex to protect concurrent access to the encoders map
+	mutex sync.RWMutex
 }
 
 // NewCounter creates a new token counter
@@ -87,7 +90,20 @@ func (c *Counter) CountMessages(messages []openai.ChatCompletionMessage, model s
 // getEncoderForModel returns a tiktoken encoder for the specified model
 // It caches encoders to improve performance on repeated calls
 func (c *Counter) getEncoderForModel(model string) (*tiktoken.Tiktoken, error) {
-	// Check if we already have a cached encoder for this model
+	// First check with a read lock if we already have a cached encoder
+	c.mutex.RLock()
+	encoder, ok := c.encoders[model]
+	c.mutex.RUnlock()
+
+	if ok {
+		return encoder, nil
+	}
+
+	// If not found, acquire a write lock and check again (double-checked locking)
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Check again in case another goroutine created it while we were waiting
 	if encoder, ok := c.encoders[model]; ok {
 		return encoder, nil
 	}
