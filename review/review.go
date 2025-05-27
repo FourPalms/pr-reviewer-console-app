@@ -421,13 +421,13 @@ func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
 // AnalyzeFile sends a file to the LLM for analysis and returns the result
 func (w *Workflow) AnalyzeFile(filename, content string) (string, error) {
 	prompt := w.FileAnalysisPrompt(filename, content)
-	
+
 	fmt.Printf("Analyzing file: %s\n", filename)
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return "", fmt.Errorf("error analyzing file %s: %w", filename, err)
 	}
-	
+
 	return response, nil
 }
 
@@ -438,35 +438,35 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 	if err != nil {
 		return fmt.Errorf("error parsing recommended file order: %w", err)
 	}
-	
+
 	// 2. Create the output file
 	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-implementation.md", w.Ctx.Ticket))
 	var sb strings.Builder
 	sb.WriteString("# Original Implementation Analysis\n\n")
 	sb.WriteString("This document provides an analysis of how the code worked before the changes in this PR.\n\n")
-	
+
 	// 3. Process each file in order
 	for i, file := range orderedFiles {
 		fmt.Printf("Analyzing file %d/%d: %s\n", i+1, len(orderedFiles), file)
-		
+
 		// Get original file content
 		content, err := w.GetOriginalFileContent(file)
 		if err != nil {
 			fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
 			continue
 		}
-		
+
 		// Analyze with LLM
 		analysis, err := w.AnalyzeFile(file, content)
 		if err != nil {
 			fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
 			continue
 		}
-		
+
 		// Add to output
 		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", file, analysis))
 	}
-	
+
 	// 4. Count tokens in the result
 	outputContent := sb.String()
 	tokenCount, err := w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
@@ -474,14 +474,74 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis analysis contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
 		outputContent = sb.String()
 	}
-	
+
 	// 5. Write the result to a file
 	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write analysis: %w", err)
 	}
-	
+
 	fmt.Printf("Original implementation analysis saved to %s\n", outputPath)
+	return nil
+}
+
+// SynthesizeOriginalImplementation takes the individual file analyses and creates a synthesized understanding
+func (w *Workflow) SynthesizeOriginalImplementation() error {
+	// 1. Read the original implementation analysis file
+	originalImplementationPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-implementation.md", w.Ctx.Ticket))
+	content, err := os.ReadFile(originalImplementationPath)
+	if err != nil {
+		return fmt.Errorf("failed to read original implementation analysis: %w", err)
+	}
+
+	// 2. Create the prompt for synthesis
+	prompt := "You are a senior software engineer tasked with synthesizing individual file analyses into a cohesive understanding of a feature.\n\n"
+	prompt += "Below are detailed analyses of each file involved in a feature that's being changed in a PR.\n\n"
+	prompt += "Your task is to synthesize these individual analyses into a comprehensive understanding of how the entire feature worked as a system BEFORE the changes.\n\n"
+	prompt += "Focus on:\n"
+	prompt += "1. The overall purpose and responsibility of this feature in the system\n"
+	prompt += "2. How the different components interacted with each other\n"
+	prompt += "3. The complete data and control flow through the system\n"
+	prompt += "4. Key business rules and validation logic across components\n"
+	prompt += "5. Potential edge cases or limitations in the original implementation\n\n"
+	prompt += "IMPORTANT: Write your synthesis in a way that will be effective when fed back to a frontier model LLM as context for a PR review system. This means:\n"
+	prompt += "- Use clear, concise language with well-structured sections\n"
+	prompt += "- Highlight key relationships between components that would be relevant for understanding changes\n"
+	prompt += "- Prioritize information that would help evaluate the impact and correctness of changes\n"
+	prompt += "- Include specific details about interfaces, data flows, and business rules that might be affected by changes\n\n"
+	prompt += "Here are the individual file analyses:\n\n"
+	prompt += string(content)
+	prompt += "\n\nProvide a clear, comprehensive synthesis that explains how this feature functioned as a cohesive system before the changes."
+
+	// 3. Send to LLM for synthesis
+	fmt.Println("Synthesizing file analyses...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error synthesizing original implementation: %w", err)
+	}
+
+	// 4. Create the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
+	var sb strings.Builder
+	sb.WriteString("# Original Implementation Synthesis\n\n")
+	sb.WriteString("This document provides a synthesized understanding of how the feature worked as a cohesive system before the changes in this PR.\n\n")
+	sb.WriteString(response)
+
+	// 5. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err := w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil {
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis synthesis contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+
+	// 6. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write synthesis: %w", err)
+	}
+
+	fmt.Printf("Original implementation synthesis saved to %s\n", outputPath)
 	return nil
 }
 
@@ -521,6 +581,14 @@ func (w *Workflow) Run() error {
 		return fmt.Errorf("error analyzing original implementation: %w", err)
 	}
 	fmt.Println("Original implementation analysis completed successfully.")
+
+	// Step 5: Synthesize original implementation
+	fmt.Println("Step 5: Synthesizing original implementation...")
+	err = w.SynthesizeOriginalImplementation()
+	if err != nil {
+		return fmt.Errorf("error synthesizing original implementation: %w", err)
+	}
+	fmt.Println("Original implementation synthesis completed successfully.")
 
 	return nil
 }
