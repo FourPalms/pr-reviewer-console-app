@@ -186,13 +186,14 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 
 // InitialDiscoveryPrompt generates the prompt for the initial discovery step
 func (w *Workflow) InitialDiscoveryPrompt() string {
-	return fmt.Sprintf(`You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns.
+	// Base prompt template
+	promptTemplate := `You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns.
 
 Here is a list of the files that were changed:
 %s
 
 Here is the full diff of the changes:
-%s
+%s%s
 
 Please provide your analysis in the following format with EXACTLY these section headings:
 
@@ -203,7 +204,7 @@ Please provide your analysis in the following format with EXACTLY these section 
 [Your trace of the logic flow through files and functions here]
 
 ## 3. Recommended File Order
-[Your recommended order for analyzing the files here]
+[Your recommended order for analyzing the files here]%s
 
 For the recommended file order section:
 - Always include the COMPLETE file paths exactly as they appear in the file list above
@@ -218,8 +219,17 @@ Consider the architecture patterns where:
 - Services orchestrate operations
 - ApplicationServices provide functionality across domains
 
-Format your response in markdown with clear sections and code references.`,
-		w.Ctx.FilesContent, w.Ctx.DiffContent)
+Format your response in markdown with clear sections and code references.`
+
+	// Add design document section if available
+	designDocSection := ""
+	designDocInstruction := ""
+	if w.Ctx.DesignDocContent != "" {
+		designDocSection = fmt.Sprintf("\n\n## Design Document\n\nThe following design document provides context for this PR:\n\n%s\n\nPlease consider this design document when analyzing the PR changes.", w.Ctx.DesignDocContent)
+		designDocInstruction = "\n\n## 4. Design Alignment\n[Your assessment of how well the changes align with the design document]" 
+	}
+
+	return fmt.Sprintf(promptTemplate, w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, designDocInstruction)
 }
 
 // CollectOriginalFileContents reads the original content of modified and deleted files
@@ -694,6 +704,14 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 	sb.WriteString("\n\n### Changes in this PR\n\n")
 	sb.WriteString(w.Ctx.DiffContent)
 
+	// Add design document if available
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("\n\n### Design Document\n\n")
+		sb.WriteString("The following design document provides context for this PR:\n\n")
+		sb.WriteString(w.Ctx.DesignDocContent)
+		sb.WriteString("\n\nPlease evaluate whether the implementation follows the design document.")
+	}
+
 	// Final Instructions
 	sb.WriteString("\n\n## Final Instructions\n\n")
 	sb.WriteString("1. Write your review in a professional, respectful tone appropriate for communication between senior developers.\n")
@@ -702,6 +720,9 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 	sb.WriteString("4. If there are no issues in a category, explicitly state that.\n")
 	sb.WriteString("5. Format your response as clean GitHub-compatible markdown that can be directly pasted into a PR comment.\n")
 	sb.WriteString("6. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("7. Compare the implementation against the design document and note any deviations.\n")
+	}
 
 	return sb.String()
 }
