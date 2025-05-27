@@ -400,7 +400,7 @@ func (w *Workflow) GetOriginalFileContent(file string) (string, error) {
 // FileAnalysisPrompt generates a prompt for analyzing a single file
 func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
 	prompt := "You are a senior PHP developer analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
-	prompt += "Your goal is to understand how the feature being changed in this PR worked BEFORE the changes were applied.\n\n"
+	prompt += "Your goal is to understand how the specific feature being changed in this PR worked BEFORE the changes were applied.\n\n"
 	prompt += fmt.Sprintf("File: %s\n\n", filename)
 	prompt += "Here's the original content of the file before changes:\n```php\n"
 	prompt += content
@@ -408,12 +408,13 @@ func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
 	prompt += "Here's the diff showing what's changing in the PR:\n"
 	prompt += w.Ctx.DiffContent
 	prompt += "\n\nFocus on:\n"
-	prompt += "1. What was the purpose and responsibility of this file in the overall system?\n"
+	prompt += "1. What specific feature or functionality does this file contribute to, based on the PR changes?\n"
 	prompt += "2. How did the key functions/methods work before the changes, especially those affected by the PR?\n"
-	prompt += "3. What were the inputs, outputs, and dependencies of these functions?\n"
-	prompt += "4. What business rules or validation logic was implemented?\n"
-	prompt += "5. How did this component interact with other parts of the system?\n\n"
-	prompt += "Provide a clear, concise analysis that explains how this component functioned before the changes."
+	prompt += "3. What were the inputs, outputs, and dependencies of these specific functions?\n"
+	prompt += "4. What business rules or validation logic was implemented in this specific feature?\n"
+	prompt += "5. How did this component interact with other parts of the system for this specific feature?\n\n"
+	prompt += "IMPORTANT: Your analysis will be used by another LLM to understand the pre-change implementation when reviewing the PR changes. Focus on the specific feature being modified, not the general system architecture.\n\n"
+	prompt += "Provide a clear, concise analysis that explains how this component functioned before the changes, focusing on the specific feature being modified."
 
 	return prompt
 }
@@ -495,23 +496,23 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 	}
 
 	// 2. Create the prompt for synthesis
-	prompt := "You are a senior software engineer tasked with synthesizing individual file analyses into a cohesive understanding of a feature.\n\n"
+	prompt := "You are a senior software engineer tasked with synthesizing individual file analyses into a cohesive understanding of a specific feature.\n\n"
 	prompt += "Below are detailed analyses of each file involved in a feature that's being changed in a PR.\n\n"
-	prompt += "Your task is to synthesize these individual analyses into a comprehensive understanding of how the entire feature worked as a system BEFORE the changes.\n\n"
+	prompt += "Your task is to synthesize these individual analyses into a comprehensive understanding of how the specific feature worked as a system BEFORE the changes.\n\n"
 	prompt += "Focus on:\n"
-	prompt += "1. The overall purpose and responsibility of this feature in the system\n"
-	prompt += "2. How the different components interacted with each other\n"
-	prompt += "3. The complete data and control flow through the system\n"
-	prompt += "4. Key business rules and validation logic across components\n"
-	prompt += "5. Potential edge cases or limitations in the original implementation\n\n"
-	prompt += "IMPORTANT: Write your synthesis in a way that will be effective when fed back to a frontier model LLM as context for a PR review system. This means:\n"
-	prompt += "- Use clear, concise language with well-structured sections\n"
-	prompt += "- Highlight key relationships between components that would be relevant for understanding changes\n"
-	prompt += "- Prioritize information that would help evaluate the impact and correctness of changes\n"
-	prompt += "- Include specific details about interfaces, data flows, and business rules that might be affected by changes\n\n"
+	prompt += "1. Identify the specific feature being modified based on the file analyses and PR changes\n"
+	prompt += "2. The complete data and control flow through the system for this specific feature\n"
+	prompt += "3. The business rules and validation logic specific to this feature\n"
+	prompt += "4. How the different components interacted with each other to implement this feature\n"
+	prompt += "5. Potential edge cases or limitations in the original implementation of this feature\n\n"
+	prompt += "IMPORTANT: Your synthesis will be used as context by another LLM for reviewing the PR changes. Therefore:\n"
+	prompt += "- Focus on the specific feature being modified, not the general system architecture\n"
+	prompt += "- Provide concrete details about how this specific feature worked\n"
+	prompt += "- Highlight specific methods, parameters, and business rules that are directly relevant\n"
+	prompt += "- Structure your response to be maximally useful as context for understanding the changes\n\n"
 	prompt += "Here are the individual file analyses:\n\n"
 	prompt += string(content)
-	prompt += "\n\nProvide a clear, comprehensive synthesis that explains how this feature functioned as a cohesive system before the changes."
+	prompt += "\n\nProvide a clear, comprehensive synthesis that explains how this specific feature functioned as a cohesive system before the changes."
 
 	// 3. Send to LLM for synthesis
 	fmt.Println("Synthesizing file analyses...")
