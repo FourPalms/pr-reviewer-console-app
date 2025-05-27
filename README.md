@@ -50,7 +50,7 @@ agent-runner/
    ```
 5. Run your first PR review:
    ```
-   make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1234
+   make review REPO=BambooHR/repo-name PR-BRANCH=username/TICKET-NUMBER
    ```
 
 ## Usage
@@ -62,13 +62,13 @@ The agent-runner is designed to analyze pull requests and provide detailed code 
 #### Using the Go command directly:
 
 ```
-go run ./cmd/agent --review --ticket=WIRE-1231 [--repo=BambooHR/repo-name] [--branch=username/WIRE-1231]
+go run ./cmd/agent --review --ticket=TICKET-NUMBER [--repo=BambooHR/repo-name] [--branch=username/TICKET-NUMBER]
 ```
 
 #### Using the Makefile (recommended):
 
 ```
-make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+make review REPO=BambooHR/repo-name PR-BRANCH=username/TICKET-NUMBER
 ```
 
 ### Review Process
@@ -100,10 +100,10 @@ The project includes a Makefile with several useful targets, primarily focused o
 
 ```
 make review       # Main command: Set up repo and run full PR review
-                  # Usage: make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+                  # Usage: make review REPO=BambooHR/repo-name PR-BRANCH=username/TICKET-NUMBER
 
 make run-review   # Run review on an already prepared repository
-                  # Usage: make run-review TICKET=WIRE-1231
+                  # Usage: make run-review TICKET=TICKET-NUMBER
 
 make clone-repo   # Clone a GitHub repository for review
                   # Usage: make clone-repo REPO=BambooHR/repo-name
@@ -112,10 +112,10 @@ make pull-repo    # Pull latest changes from main/master branch
                   # Usage: make pull-repo REPO=BambooHR/repo-name
 
 make diff-pr      # Generate a diff between master and PR branch
-                  # Usage: make diff-pr REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+                  # Usage: make diff-pr REPO=BambooHR/repo-name PR-BRANCH=username/TICKET-NUMBER
 
 make list-changes # List changed files in a PR
-                  # Usage: make list-changes REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+                  # Usage: make list-changes REPO=BambooHR/repo-name PR-BRANCH=username/TICKET-NUMBER
 ```
 
 ### Development Targets
