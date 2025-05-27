@@ -369,6 +369,122 @@ func (w *Workflow) ParseRecommendedFileOrder() ([]string, error) {
 	return files, nil
 }
 
+// GetOriginalFileContent retrieves the content of a file from before the PR changes
+func (w *Workflow) GetOriginalFileContent(file string) (string, error) {
+	// Get the merge-base (common ancestor) of main and PR branch
+	cmd := exec.Command("git", "merge-base", "main", w.Ctx.Branch)
+	cmd.Dir = w.Ctx.RepoDir
+	mergeBase, err := cmd.Output()
+	if err != nil {
+		// Try with master if main fails
+		cmd = exec.Command("git", "merge-base", "master", w.Ctx.Branch)
+		cmd.Dir = w.Ctx.RepoDir
+		mergeBase, err = cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("failed to find merge-base: %w", err)
+		}
+	}
+	baseCommit := strings.TrimSpace(string(mergeBase))
+
+	// Get the file content at the merge-base commit
+	cmd = exec.Command("git", "show", fmt.Sprintf("%s:%s", baseCommit, file))
+	cmd.Dir = w.Ctx.RepoDir
+	content, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get content for %s: %w", file, err)
+	}
+
+	return string(content), nil
+}
+
+// FileAnalysisPrompt generates a prompt for analyzing a single file
+func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
+	prompt := "You are a senior PHP developer analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
+	prompt += "Your goal is to understand how the feature being changed in this PR worked BEFORE the changes were applied.\n\n"
+	prompt += fmt.Sprintf("File: %s\n\n", filename)
+	prompt += "Here's the original content of the file before changes:\n```php\n"
+	prompt += content
+	prompt += "\n```\n\n"
+	prompt += "Here's the diff showing what's changing in the PR:\n"
+	prompt += w.Ctx.DiffContent
+	prompt += "\n\nFocus on:\n"
+	prompt += "1. What was the purpose and responsibility of this file in the overall system?\n"
+	prompt += "2. How did the key functions/methods work before the changes, especially those affected by the PR?\n"
+	prompt += "3. What were the inputs, outputs, and dependencies of these functions?\n"
+	prompt += "4. What business rules or validation logic was implemented?\n"
+	prompt += "5. How did this component interact with other parts of the system?\n\n"
+	prompt += "Provide a clear, concise analysis that explains how this component functioned before the changes."
+
+	return prompt
+}
+
+// AnalyzeFile sends a file to the LLM for analysis and returns the result
+func (w *Workflow) AnalyzeFile(filename, content string) (string, error) {
+	prompt := w.FileAnalysisPrompt(filename, content)
+	
+	fmt.Printf("Analyzing file: %s\n", filename)
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return "", fmt.Errorf("error analyzing file %s: %w", filename, err)
+	}
+	
+	return response, nil
+}
+
+// AnalyzeOriginalImplementation analyzes each file to understand the original implementation
+func (w *Workflow) AnalyzeOriginalImplementation() error {
+	// 1. Parse the recommended file order
+	orderedFiles, err := w.ParseRecommendedFileOrder()
+	if err != nil {
+		return fmt.Errorf("error parsing recommended file order: %w", err)
+	}
+	
+	// 2. Create the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-implementation.md", w.Ctx.Ticket))
+	var sb strings.Builder
+	sb.WriteString("# Original Implementation Analysis\n\n")
+	sb.WriteString("This document provides an analysis of how the code worked before the changes in this PR.\n\n")
+	
+	// 3. Process each file in order
+	for i, file := range orderedFiles {
+		fmt.Printf("Analyzing file %d/%d: %s\n", i+1, len(orderedFiles), file)
+		
+		// Get original file content
+		content, err := w.GetOriginalFileContent(file)
+		if err != nil {
+			fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
+			continue
+		}
+		
+		// Analyze with LLM
+		analysis, err := w.AnalyzeFile(file, content)
+		if err != nil {
+			fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
+			continue
+		}
+		
+		// Add to output
+		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", file, analysis))
+	}
+	
+	// 4. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err := w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil {
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis analysis contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+	
+	// 5. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write analysis: %w", err)
+	}
+	
+	fmt.Printf("Original implementation analysis saved to %s\n", outputPath)
+	return nil
+}
+
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Step 1: Count tokens
@@ -398,17 +514,13 @@ func (w *Workflow) Run() error {
 	}
 	fmt.Println("Original file content collection completed successfully.")
 
-	// DEBUG: Parse recommended file order
-	fmt.Println("DEBUG: Parsing recommended file order...")
-	files, err := w.ParseRecommendedFileOrder()
+	// Step 4: Analyze original implementation
+	fmt.Println("Step 4: Analyzing original implementation...")
+	err = w.AnalyzeOriginalImplementation()
 	if err != nil {
-		fmt.Printf("Error parsing recommended file order: %v\n", err)
-	} else {
-		fmt.Println("Recommended file order:")
-		for i, file := range files {
-			fmt.Printf("%d. %s\n", i+1, file)
-		}
+		return fmt.Errorf("error analyzing original implementation: %w", err)
 	}
+	fmt.Println("Original implementation analysis completed successfully.")
 
 	return nil
 }
