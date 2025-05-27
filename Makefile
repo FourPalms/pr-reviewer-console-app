@@ -1,4 +1,4 @@
-.PHONY: build test clean run run-review setup-hooks check clone-repo pull-repo review diff-pr list-changes
+.PHONY: build test clean run run-review setup-hooks check clone-repo pull-repo review diff-pr list-changes status
 
 # Default Go build flags
 GOFLAGS := -v
@@ -131,6 +131,11 @@ diff-pr:
 	echo "Generating diff from common ancestor to $(PR-BRANCH)..." && \
 	git diff $$MERGE_BASE..$(PR-BRANCH) > ../../../.context/reviews/$$TICKET-diff.md && \
 	echo "Diff generated at .context/reviews/$$TICKET-diff.md"
+
+# Check status of integrations
+# Usage: make status
+status:
+	@go run ./cmd/agent --status
 
 # List changed files in a PR
 # Usage: make list-changes REPO=username/repo-name PR-BRANCH=username/ticket-number

@@ -18,6 +18,7 @@ func main() {
 	// Define command-line flags
 	modelFlag := flag.String("model", "", "OpenAI model to use (overrides env variable)")
 	reviewFlag := flag.Bool("review", false, "Run PR review workflow")
+	statusFlag := flag.Bool("status", false, "Check status of integrations")
 	ticketFlag := flag.String("ticket", "", "Ticket number for PR review (e.g., WIRE-1231)")
 	repoFlag := flag.String("repo", "", "Repository name for PR review (e.g., BambooHR/payroll-gateway)")
 	branchFlag := flag.String("branch", "", "PR branch name for review (e.g., username/WIRE-1231)")
@@ -44,6 +45,12 @@ func main() {
 	// Print which model we're using
 	fmt.Printf("Using model: %s\n", cfg.Model)
 
+	// Check if status mode is enabled
+	if *statusFlag {
+		handleStatus()
+		return
+	}
+
 	// Check if review mode is enabled
 	if *reviewFlag {
 		if *ticketFlag == "" {
@@ -51,7 +58,7 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		
+
 		if *repoFlag == "" {
 			fmt.Fprintf(os.Stderr, "Error: repo is required for review mode\n")
 			flag.Usage()

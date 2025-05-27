@@ -11,6 +11,11 @@ import (
 type Config struct {
 	OpenAIAPIKey string
 	Model        string
+	
+	// Jira settings
+	JiraURL      string
+	JiraEmail    string
+	JiraToken    string
 }
 
 // Load loads the configuration from environment variables
@@ -26,11 +31,24 @@ func Load() (*Config, error) {
 	// Get model from env or use default
 	model := os.Getenv("OPENAI_MODEL")
 	if model == "" {
-		model = "gpt-3.5-turbo" // Default model
+		model = "gpt-4o" // Default model
 	}
+
+	// Get Jira settings (optional)
+	jiraURL := os.Getenv("JIRA_URL")
+	jiraEmail := os.Getenv("JIRA_EMAIL")
+	jiraToken := os.Getenv("JIRA_API_TOKEN")
 
 	return &Config{
 		OpenAIAPIKey: apiKey,
 		Model:        model,
+		JiraURL:      jiraURL,
+		JiraEmail:    jiraEmail,
+		JiraToken:    jiraToken,
 	}, nil
+}
+
+// HasJiraCredentials checks if all required Jira credentials are available
+func (c *Config) HasJiraCredentials() bool {
+	return c.JiraURL != "" && c.JiraEmail != "" && c.JiraToken != ""
 }
