@@ -1,6 +1,6 @@
 # Agent Runner
 
-A Golang console application that interacts with OpenAI's API to send prompts and receive responses.
+A Golang console application that leverages OpenAI's API for automated Pull Request review and code analysis.
 
 ## Project Structure
 
@@ -15,8 +15,16 @@ agent-runner/
 │   └── config.go
 ├── openai/               # OpenAI domain package
 │   └── client.go         # OpenAI client implementation
+├── review/               # PR review functionality
+│   ├── review.go         # Core review logic
+│   └── review_test.go    # Tests for review package
+├── tokens/               # Token counting utilities
+│   ├── counter.go        # Token counter implementation
+│   └── counter_test.go   # Tests for token counter
+├── .context/             # Context directory for reviews and projects
 ├── .env                  # Environment variables (not committed to version control)
 ├── .gitignore            # Git ignore file
+├── .githooks/            # Git hooks for quality control
 ├── go.mod                # Go module definition
 └── README.md             # This file
 ```
@@ -36,52 +44,86 @@ agent-runner/
    ```
    go mod tidy
    ```
-4. Build the application:
+4. Create the necessary directories for PR reviews:
    ```
-   make build
+   mkdir -p .context/projects .context/reviews
    ```
-   or
+5. Run your first PR review:
    ```
-   go build -o bin/agent ./cmd/agent
-   ```
-5. Run the application:
-   ```
-   ./bin/agent "Your prompt here"
-   ```
-   or
-   ```
-   make run PROMPT="Your prompt here"
-   ```
-   or (for interactive mode)
-   ```
-   make run
+   make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1234
    ```
 
 ## Usage
 
-### Command-line mode
+### PR Review
+
+The agent-runner is designed to analyze pull requests and provide detailed code reviews using LLMs. It can be run in two ways:
+
+#### Using the Go command directly:
 
 ```
-./bin/agent "What is the capital of France?"
+go run ./cmd/agent --review --ticket=WIRE-1231 [--repo=BambooHR/repo-name] [--branch=username/WIRE-1231]
 ```
 
-### Interactive mode
+#### Using the Makefile (recommended):
 
 ```
-./bin/agent
+make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
 ```
 
-Then type your prompts at the prompt and press Enter. Type `exit` to quit.
+### Review Process
+
+When you run the review command, the tool will:
+
+1. Clone the repository if it doesn't exist locally
+2. Generate a diff between master and the PR branch
+3. List all changed files (added, modified, deleted)
+4. Analyze the original implementation of affected code
+5. Synthesize a comprehensive understanding of the code before changes
+
+### Review Artifacts
+
+All review artifacts are saved in the `.context/reviews/` directory with the ticket number as prefix:
+
+- `TICKET-diff.md`: The complete diff between master and PR branch
+- `TICKET-files.md`: List of all changed files with statistics
+- `TICKET-initial-discovery.md`: Initial analysis of the changes
+- `TICKET-original-synthesis.md`: Synthesized understanding of the original implementation
+
+These artifacts provide a comprehensive analysis that helps reviewers understand both the original code and the proposed changes.
 
 ## Makefile
 
-The project includes a Makefile with several useful targets:
+The project includes a Makefile with several useful targets, primarily focused on PR review functionality:
+
+### PR Review Targets
+
+```
+make review       # Main command: Set up repo and run full PR review
+                  # Usage: make review REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+
+make run-review   # Run review on an already prepared repository
+                  # Usage: make run-review TICKET=WIRE-1231
+
+make clone-repo   # Clone a GitHub repository for review
+                  # Usage: make clone-repo REPO=BambooHR/repo-name
+
+make pull-repo    # Pull latest changes from main/master branch
+                  # Usage: make pull-repo REPO=BambooHR/repo-name
+
+make diff-pr      # Generate a diff between master and PR branch
+                  # Usage: make diff-pr REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+
+make list-changes # List changed files in a PR
+                  # Usage: make list-changes REPO=BambooHR/repo-name PR-BRANCH=username/WIRE-1231
+```
+
+### Development Targets
 
 ```
 make build        # Build the application
 make test         # Run all tests
 make clean        # Clean build artifacts
-make run          # Run the application
 make deps         # Install dependencies
 make fmt          # Format code
 make lint         # Run linter
