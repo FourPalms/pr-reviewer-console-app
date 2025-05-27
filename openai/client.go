@@ -8,17 +8,17 @@ import (
 	"io"
 	"net/http"
 	"time"
-	
+
 	"github.com/jeremyhunt/agent-runner/tokens"
 	"github.com/sashabaranov/go-openai"
 )
 
 // Client represents an OpenAI API client
 type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	baseURL    string
-	model      string
+	apiKey       string
+	httpClient   *http.Client
+	baseURL      string
+	model        string
 	tokenCounter *tokens.Counter
 }
 
@@ -29,15 +29,15 @@ func NewClient(apiKey string, model string) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL: "https://api.openai.com/v1",
-		model: model,
+		baseURL:      "https://api.openai.com/v1",
+		model:        model,
 		tokenCounter: tokens.NewCounter(),
 	}
 }
 
 // ChatCompletionRequest represents a request to the chat completion API
 type ChatCompletionRequest struct {
-	Model    string                   `json:"model"`
+	Model    string                         `json:"model"`
 	Messages []openai.ChatCompletionMessage `json:"messages"`
 }
 
@@ -64,7 +64,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 			Content: prompt,
 		},
 	}
-	
+
 	// Create the request body
 	reqBody := ChatCompletionRequest{
 		Model:    c.model,

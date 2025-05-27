@@ -55,6 +55,9 @@ type ReviewContext struct {
 	// DesignDocContent is the content of the design document
 	DesignDocContent string
 
+	// TicketDetails is the formatted Jira ticket information
+	TicketDetails string
+
 	// Results from processing steps
 	DiffContent  string
 	FilesContent string
@@ -193,7 +196,7 @@ Here is a list of the files that were changed:
 %s
 
 Here is the full diff of the changes:
-%s%s
+%s%s%s
 
 Please provide your analysis in the following format with EXACTLY these section headings:
 
@@ -204,7 +207,7 @@ Please provide your analysis in the following format with EXACTLY these section 
 [Your trace of the logic flow through files and functions here]
 
 ## 3. Recommended File Order
-[Your recommended order for analyzing the files here]%s
+[Your recommended order for analyzing the files here]%s%s
 
 For the recommended file order section:
 - Always include the COMPLETE file paths exactly as they appear in the file list above
@@ -229,7 +232,15 @@ Format your response in markdown with clear sections and code references.`
 		designDocInstruction = "\n\n## 4. Design Alignment\n[Your assessment of how well the changes align with the design document]" 
 	}
 
-	return fmt.Sprintf(promptTemplate, w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, designDocInstruction)
+	// Add ticket details if available
+	ticketSection := ""
+	ticketInstruction := ""
+	if w.Ctx.TicketDetails != "" {
+		ticketSection = fmt.Sprintf("\n\n## Jira Ticket\n\nThe following Jira ticket provides context for this PR:\n\n%s\n\nPlease consider this ticket information when analyzing the PR changes.", w.Ctx.TicketDetails)
+		ticketInstruction = "\n\n## 5. Ticket Alignment\n[Your assessment of how well the changes address the requirements in the ticket]"
+	}
+
+	return fmt.Sprintf(promptTemplate, w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, ticketSection, designDocInstruction, ticketInstruction)
 }
 
 // CollectOriginalFileContents reads the original content of modified and deleted files
@@ -712,6 +723,14 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 		sb.WriteString("\n\nPlease evaluate whether the implementation follows the design document.")
 	}
 
+	// Add ticket details if available
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("\n\n### Jira Ticket\n\n")
+		sb.WriteString("The following Jira ticket provides context for this PR:\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+		sb.WriteString("\n\nPlease evaluate whether the implementation addresses the requirements in the ticket.")
+	}
+
 	// Final Instructions
 	sb.WriteString("\n\n## Final Instructions\n\n")
 	sb.WriteString("1. Write your review in a professional, respectful tone appropriate for communication between senior developers.\n")
@@ -720,8 +739,17 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 	sb.WriteString("4. If there are no issues in a category, explicitly state that.\n")
 	sb.WriteString("5. Format your response as clean GitHub-compatible markdown that can be directly pasted into a PR comment.\n")
 	sb.WriteString("6. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
+
+	// Add numbered instructions for design document and ticket
+	instructionNum := 7
+
 	if w.Ctx.DesignDocContent != "" {
-		sb.WriteString("7. Compare the implementation against the design document and note any deviations.\n")
+		sb.WriteString(fmt.Sprintf("%d. Compare the implementation against the design document and note any deviations.\n", instructionNum))
+		instructionNum++
+	}
+
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString(fmt.Sprintf("%d. Evaluate whether the implementation addresses all the requirements in the Jira ticket.\n", instructionNum))
 	}
 
 	return sb.String()
@@ -781,6 +809,18 @@ func (w *Workflow) Run() error {
 	err := w.LoadDesignDocument()
 	if err != nil {
 		return fmt.Errorf("error loading design document: %w", err)
+	}
+
+	// Fetch and format Jira ticket information if a ticket is specified
+	if w.Ctx.Ticket != "" {
+		err = w.LoadTicketDetails()
+		if err != nil {
+			// If we can't load the ticket details, log the error and exit
+			fmt.Printf("Error: Failed to load Jira ticket details: %v\n", err)
+			fmt.Println("Please check your Jira credentials and try again.")
+			os.Exit(1)
+		}
+		fmt.Printf("Jira ticket %s loaded successfully\n", w.Ctx.Ticket)
 	}
 
 	// Step 1: Count tokens

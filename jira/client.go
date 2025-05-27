@@ -12,9 +12,9 @@ import (
 
 // Client is a wrapper around the Jira client
 type Client struct {
-	jiraClient *jiralib.Client
+	jiraClient   *jiralib.Client
 	openaiClient *openai.Client
-	config     *config.Config
+	config       *config.Config
 }
 
 // NewClient creates a new Jira client
@@ -40,9 +40,9 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	openaiClient := openai.NewClient(cfg.OpenAIAPIKey, cfg.Model)
 
 	return &Client{
-		jiraClient: jiraClient,
+		jiraClient:   jiraClient,
 		openaiClient: openaiClient,
-		config:     cfg,
+		config:       cfg,
 	}, nil
 }
 
@@ -86,6 +86,20 @@ Format this as markdown, with appropriate sections and highlighting of key infor
 
 Do not include any explanations or commentary outside of the formatted ticket content.`, string(ticketJSON))
 
+	// Count tokens in the text
+	tokenCount, err := c.openaiClient.CountText(prompt)
+	if err != nil {
+		return "", fmt.Errorf("error counting tokens: %w", err)
+	}
+	
+	// Check if the token count exceeds the maximum (4000 tokens)
+	const maxTokens = 4000
+	if tokenCount > maxTokens {
+		return "", fmt.Errorf("token count (%d) exceeds maximum (%d)", tokenCount, maxTokens)
+	}
+	
+	fmt.Printf("Formatting ticket with token count: %d...\n", tokenCount)
+	
 	// Send the prompt to the LLM
 	response, err := c.openaiClient.Complete(context.Background(), prompt)
 	if err != nil {
