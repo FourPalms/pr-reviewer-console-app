@@ -50,6 +50,12 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
+		
+		if *repoFlag == "" {
+			fmt.Fprintf(os.Stderr, "Error: repo is required for review mode\n")
+			flag.Usage()
+			os.Exit(1)
+		}
 
 		handleReview(client, *ticketFlag, *repoFlag, *branchFlag)
 		return

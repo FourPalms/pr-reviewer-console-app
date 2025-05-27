@@ -62,7 +62,7 @@ The agent-runner is designed to analyze pull requests and provide detailed code 
 #### Using the Go command directly:
 
 ```
-go run ./cmd/agent --review --ticket=TICKET-NUMBER [--repo=BambooHR/repo-name] [--branch=username/TICKET-NUMBER]
+go run ./cmd/agent --review --ticket=TICKET-NUMBER --repo=BambooHR/repo-name [--branch=username/TICKET-NUMBER]
 ```
 
 #### Using the Makefile (recommended):

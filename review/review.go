@@ -546,6 +546,98 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 	return nil
 }
 
+// GeneratePRReviewPrompt creates a prompt for the PR review step
+func (w *Workflow) GeneratePRReviewPrompt() string {
+	// Read the original synthesis file
+	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
+	synthesisContent, err := os.ReadFile(synthesisPath)
+	if err != nil {
+		fmt.Printf("Warning: Could not read synthesis file: %v\n", err)
+		synthesisContent = []byte("No synthesis available.")
+	}
+
+	// Build the prompt
+	var prompt strings.Builder
+	prompt.WriteString("# PR Review Request\n\n")
+	prompt.WriteString("You are a senior software engineer reviewing a Pull Request. ")
+	prompt.WriteString("Your task is to provide a thorough code review focusing on syntax correctness, best practices, and potential issues.\n\n")
+	prompt.WriteString("## Review Guidelines\n\n")
+	prompt.WriteString("1. **Syntax and Best Practices**: Evaluate if the code follows language-specific syntax rules and best practices.\n")
+	prompt.WriteString("2. **Defensive Programming**: Assess if the code handles edge cases, errors, and unexpected inputs appropriately.\n")
+	prompt.WriteString("3. **Potential Issues**: Identify any code that could break existing functionality or introduce bugs.\n")
+	prompt.WriteString("4. **Performance Concerns**: Note any code that might cause performance problems.\n")
+	prompt.WriteString("5. **Security Implications**: Highlight any security vulnerabilities or concerns.\n\n")
+	prompt.WriteString("## Output Format\n\n")
+	prompt.WriteString("Structure your review in markdown format with two main sections:\n\n")
+	prompt.WriteString("1. **Blockers** (Critical issues that must be fixed before merging)\n")
+	prompt.WriteString("2. **Non-Blockers** (Suggestions for improvement that are not critical)\n\n")
+	prompt.WriteString("For each issue, include:\n\n")
+	prompt.WriteString("- File name and line number/area (if applicable)\n")
+	prompt.WriteString("- Description of the issue\n")
+	prompt.WriteString("- Recommended solution or approach\n")
+	prompt.WriteString("- Code example if helpful\n\n")
+	prompt.WriteString("## Context\n\n")
+	prompt.WriteString("### Original Implementation\n\n")
+	prompt.WriteString(string(synthesisContent))
+	prompt.WriteString("\n\n### Changes in this PR\n\n")
+	prompt.WriteString(w.Ctx.DiffContent)
+	prompt.WriteString("\n\n## Final Instructions\n\n")
+	prompt.WriteString("Provide a comprehensive, actionable review that helps the developer improve their code. ")
+	prompt.WriteString("Be specific in your feedback and constructive in your criticism. ")
+	prompt.WriteString("Focus on the most important issues first. ")
+	prompt.WriteString("If there are no issues in a category, explicitly state that.")
+
+	return prompt.String()
+}
+
+// GeneratePRReview generates a comprehensive PR review
+func (w *Workflow) GeneratePRReview() error {
+	// 1. Generate the prompt
+	prompt := w.GeneratePRReviewPrompt()
+
+	// 2. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		fmt.Printf("Warning: Could not count tokens in review prompt: %v\n", err)
+	} else {
+		fmt.Printf("PR review prompt contains %d tokens\n", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			fmt.Printf("Warning: PR review prompt is very large (%d tokens)\n", tokenCount)
+		}
+	}
+
+	// 3. Send to LLM for review
+	fmt.Println("Generating PR review...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating PR review: %w", err)
+	}
+
+	// 4. Create the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+	var sb strings.Builder
+	sb.WriteString("# PR Review Results\n\n")
+	sb.WriteString("This document contains a thorough review of the PR changes, focusing on syntax correctness, best practices, and potential issues.\n\n")
+	sb.WriteString(response)
+
+	// 5. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err = w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil {
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis review contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+
+	// 6. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write PR review: %w", err)
+	}
+
+	fmt.Printf("PR review saved to %s\n", outputPath)
+	return nil
+}
+
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Step 1: Count tokens
@@ -590,6 +682,14 @@ func (w *Workflow) Run() error {
 		return fmt.Errorf("error synthesizing original implementation: %w", err)
 	}
 	fmt.Println("Original implementation synthesis completed successfully.")
+
+	// Step 6: Generate PR review
+	fmt.Println("Step 6: Generating PR review...")
+	err = w.GeneratePRReview()
+	if err != nil {
+		return fmt.Errorf("error generating PR review: %w", err)
+	}
+	fmt.Println("PR review generation completed successfully.")
 
 	return nil
 }
