@@ -642,49 +642,62 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 		synthesisContent = []byte("No synthesis available.")
 	}
 
-	// Build the prompt
-	var prompt strings.Builder
-	prompt.WriteString("# PR Review Request\n\n")
-	prompt.WriteString("You are a senior software engineer reviewing a Pull Request. ")
-	prompt.WriteString("Your task is to provide a thorough code review focusing on syntax correctness, best practices, and potential issues. ")
-	prompt.WriteString("Your review will be read by other senior developers and pasted directly into GitHub comments.\n\n")
-	prompt.WriteString("## Review Guidelines\n\n")
-	prompt.WriteString("1. **Syntax and Best Practices**: Evaluate if the code follows language-specific syntax rules and best practices.\n")
-	prompt.WriteString("2. **Defensive Programming**: Assess if the code handles edge cases, errors, and unexpected inputs appropriately.\n")
-	prompt.WriteString("3. **Potential Issues**: Identify any code that could break existing functionality or introduce bugs.\n")
-	prompt.WriteString("4. **Performance Concerns**: Note any code that might cause performance problems.\n")
-	prompt.WriteString("5. **Security Implications**: Highlight any security vulnerabilities or concerns.\n\n")
-	prompt.WriteString("## Output Format\n\n")
-	prompt.WriteString("Structure your review in GitHub-compatible markdown format with two main sections:\n\n")
-	prompt.WriteString("1. **Blockers** (Critical issues that must be fixed before merging)\n")
-	prompt.WriteString("2. **Non-Blockers** (Suggestions for improvement that are not critical)\n\n")
-	prompt.WriteString("For each issue, include:\n\n")
-	prompt.WriteString("- File name and line number/area (if applicable)\n")
-	prompt.WriteString("- Description of the issue\n")
-	prompt.WriteString("- Recommended solution or approach\n")
-	prompt.WriteString("- Code example using GitHub's diff format (with - for removals in red and + for additions in green)\n\n")
-	prompt.WriteString("Example of proper diff format:\n\n")
-	prompt.WriteString("```diff\n")
-	prompt.WriteString("- if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
-	prompt.WriteString("+ if (!$payCycle) {\n")
-	prompt.WriteString("+     return;\n")
-	prompt.WriteString("+ }\n")
-	prompt.WriteString("+ \n")
-	prompt.WriteString("+ if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
-	prompt.WriteString("```\n\n")
-	prompt.WriteString("## Context\n\n")
-	prompt.WriteString("### Original Implementation\n\n")
-	prompt.WriteString(string(synthesisContent))
-	prompt.WriteString("\n\n### Changes in this PR\n\n")
-	prompt.WriteString(w.Ctx.DiffContent)
-	prompt.WriteString("\n\n## Final Instructions\n\n")
-	prompt.WriteString("1. Write your review in a professional, respectful tone appropriate for communication between senior developers.\n")
-	prompt.WriteString("2. Be specific in your feedback and constructive in your criticism.\n")
-	prompt.WriteString("3. Focus on the most important issues first.\n")
-	prompt.WriteString("4. If there are no issues in a category, explicitly state that.\n")
-	prompt.WriteString("5. Format your response as clean GitHub-compatible markdown that can be directly pasted into a PR comment.\n")
-	prompt.WriteString("6. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
-	return prompt.String()
+	// Build the prompt using multiple strings for better maintainability
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("# PR Review Request\n\n")
+	sb.WriteString("You are a senior software engineer reviewing a Pull Request. ")
+	sb.WriteString("Your task is to provide a thorough code review focusing on syntax correctness, best practices, and potential issues. ")
+	sb.WriteString("Your review will be read by other senior developers and pasted directly into GitHub comments.\n\n")
+
+	// Guidelines
+	sb.WriteString("## Review Guidelines\n\n")
+	sb.WriteString("1. **Syntax and Best Practices**: Evaluate if the code follows language-specific syntax rules and best practices.\n")
+	sb.WriteString("2. **Defensive Programming**: Assess if the code handles edge cases, errors, and unexpected inputs appropriately.\n")
+	sb.WriteString("3. **Potential Issues**: Identify any code that could break existing functionality or introduce bugs.\n")
+	sb.WriteString("4. **Performance Concerns**: Note any code that might cause performance problems.\n")
+	sb.WriteString("5. **Security Implications**: Highlight any security vulnerabilities or concerns.\n\n")
+
+	// Output Format
+	sb.WriteString("## Output Format\n\n")
+	sb.WriteString("Structure your review in GitHub-compatible markdown format with two main sections:\n\n")
+	sb.WriteString("1. **Blockers** (Critical issues that must be fixed before merging)\n")
+	sb.WriteString("2. **Non-Blockers** (Suggestions for improvement that are not critical)\n\n")
+	sb.WriteString("For each issue, include:\n\n")
+	sb.WriteString("- File name and line number/area (if applicable)\n")
+	sb.WriteString("- Description of the issue\n")
+	sb.WriteString("- Recommended solution or approach\n")
+	sb.WriteString("- Code example using GitHub's diff format (with - for removals in red and + for additions in green)\n\n")
+
+	// Example
+	sb.WriteString("Example of proper diff format:\n\n")
+	sb.WriteString("```diff\n")
+	sb.WriteString("- if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
+	sb.WriteString("+ if (!$payCycle) {\n")
+	sb.WriteString("+     return;\n")
+	sb.WriteString("+ }\n")
+	sb.WriteString("+ \n")
+	sb.WriteString("+ if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
+	sb.WriteString("```\n\n")
+
+	// Context
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("### Original Implementation\n\n")
+	sb.WriteString(string(synthesisContent))
+	sb.WriteString("\n\n### Changes in this PR\n\n")
+	sb.WriteString(w.Ctx.DiffContent)
+
+	// Final Instructions
+	sb.WriteString("\n\n## Final Instructions\n\n")
+	sb.WriteString("1. Write your review in a professional, respectful tone appropriate for communication between senior developers.\n")
+	sb.WriteString("2. Be specific in your feedback and constructive in your criticism.\n")
+	sb.WriteString("3. Focus on the most important issues first.\n")
+	sb.WriteString("4. If there are no issues in a category, explicitly state that.\n")
+	sb.WriteString("5. Format your response as clean GitHub-compatible markdown that can be directly pasted into a PR comment.\n")
+	sb.WriteString("6. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
+
+	return sb.String()
 }
 
 // GeneratePRReview generates a comprehensive PR review
