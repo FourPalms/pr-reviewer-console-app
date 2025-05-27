@@ -49,6 +49,12 @@ type ReviewContext struct {
 	// TokenCounter is used to count tokens
 	TokenCounter *tokens.Counter
 
+	// DesignDocPath is the name of the design document to include in the review
+	DesignDocPath string
+
+	// DesignDocContent is the content of the design document
+	DesignDocContent string
+
 	// Results from processing steps
 	DiffContent  string
 	FilesContent string

@@ -21,6 +21,7 @@ func main() {
 	ticketFlag := flag.String("ticket", "", "Ticket number for PR review (e.g., WIRE-1231)")
 	repoFlag := flag.String("repo", "", "Repository name for PR review (e.g., BambooHR/payroll-gateway)")
 	branchFlag := flag.String("branch", "", "PR branch name for review (e.g., username/WIRE-1231)")
+	designDocFlag := flag.String("design-doc", "", "Design document name to include in review context (e.g., WIRE-1231-design.md)")
 
 	// Parse flags
 	flag.Parse()
@@ -57,7 +58,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		handleReview(client, *ticketFlag, *repoFlag, *branchFlag)
+		handleReview(client, *ticketFlag, *repoFlag, *branchFlag, *designDocFlag)
 		return
 	}
 
@@ -114,7 +115,7 @@ func handlePrompt(client *openai.Client, prompt string) {
 }
 
 // handleReview runs the PR review workflow
-func handleReview(client *openai.Client, ticket string, repo string, branch string) {
+func handleReview(client *openai.Client, ticket string, repo string, branch string, designDoc string) {
 	fmt.Printf("Starting PR review for ticket %s...\n", ticket)
 
 	// Create review context
@@ -134,6 +135,11 @@ func handleReview(client *openai.Client, ticket string, repo string, branch stri
 	if branch != "" {
 		ctx.Branch = branch
 		fmt.Printf("Using PR branch %s\n", ctx.Branch)
+	}
+
+	if designDoc != "" {
+		ctx.DesignDocPath = designDoc
+		fmt.Printf("Using design document %s\n", designDoc)
 	}
 
 	// Create workflow
