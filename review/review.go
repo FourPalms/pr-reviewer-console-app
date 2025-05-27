@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/jeremyhunt/agent-runner/openai"
 	"github.com/jeremyhunt/agent-runner/tokens"
@@ -446,26 +447,98 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 	sb.WriteString("# Original Implementation Analysis\n\n")
 	sb.WriteString("This document provides an analysis of how the code worked before the changes in this PR.\n\n")
 
-	// 3. Process each file in order
-	for i, file := range orderedFiles {
-		fmt.Printf("Analyzing file %d/%d: %s\n", i+1, len(orderedFiles), file)
+	// 3. Process files using a worker pool
+	type analysisResult struct {
+		file     string
+		analysis string
+		err      error
+		index    int
+	}
 
-		// Get original file content
-		content, err := w.GetOriginalFileContent(file)
-		if err != nil {
-			fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
+	// Create a slice to store results in the correct order
+	results := make([]analysisResult, len(orderedFiles))
+	
+	// Create a mutex to protect shared resources
+	var resultsMutex sync.Mutex
+	
+	// Create a WaitGroup to track when all files have been processed
+	var wg sync.WaitGroup
+	wg.Add(len(orderedFiles))
+	
+	// Create a channel for job distribution
+	jobs := make(chan int, len(orderedFiles))
+	
+	// Determine the number of workers (max 10)
+	numWorkers := 10
+	if len(orderedFiles) < numWorkers {
+		numWorkers = len(orderedFiles)
+	}
+	
+	// Launch worker goroutines
+	for workerID := 0; workerID < numWorkers; workerID++ {
+		go func() {
+			// Process jobs until the channel is closed
+			for i := range jobs {
+				file := orderedFiles[i]
+				
+				// Print progress (protected by mutex to avoid garbled output)
+				resultsMutex.Lock()
+				fmt.Printf("Analyzing file %d/%d: %s\n", i+1, len(orderedFiles), file)
+				resultsMutex.Unlock()
+				
+				// Get original file content
+				content, err := w.GetOriginalFileContent(file)
+				if err != nil {
+					resultsMutex.Lock()
+					fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
+					resultsMutex.Unlock()
+					
+					// Store the error result
+					results[i] = analysisResult{file: file, err: err, index: i}
+					wg.Done()
+					continue
+				}
+
+				// Analyze with LLM
+				analysis, err := w.AnalyzeFile(file, content)
+				if err != nil {
+					resultsMutex.Lock()
+					fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
+					resultsMutex.Unlock()
+					
+					// Store the error result
+					results[i] = analysisResult{file: file, err: err, index: i}
+					wg.Done()
+					continue
+				}
+
+				// Store the successful result
+				results[i] = analysisResult{file: file, analysis: analysis, index: i}
+				wg.Done()
+			}
+		}()
+	}
+	
+	// Send jobs to the workers
+	for i := range orderedFiles {
+		jobs <- i
+	}
+	
+	// Close the jobs channel to signal that no more jobs are coming
+	close(jobs)
+	
+	// Wait for all files to be processed
+	wg.Wait()
+
+	// Process results in the original order
+	for _, result := range results {
+		// Skip files that had errors
+		if result.err != nil {
 			continue
 		}
-
-		// Analyze with LLM
-		analysis, err := w.AnalyzeFile(file, content)
-		if err != nil {
-			fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
-			continue
-		}
-
+		
 		// Add to output
-		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", file, analysis))
+		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", result.file, result.analysis))
 	}
 
 	// 4. Count tokens in the result
