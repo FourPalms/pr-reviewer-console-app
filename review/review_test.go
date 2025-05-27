@@ -11,27 +11,27 @@ func TestNewReviewContext(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping test in short mode")
 	}
-	
+
 	// Create a new review context
 	ctx := NewReviewContext("TEST-123", nil)
-	
+
 	// Check that the context was created correctly
 	if ctx.Ticket != "TEST-123" {
 		t.Errorf("Expected ticket to be TEST-123, got %s", ctx.Ticket)
 	}
-	
+
 	if ctx.DiffPath != filepath.Join(".context", "reviews", "TEST-123-diff.md") {
 		t.Errorf("Expected diff path to be .context/reviews/TEST-123-diff.md, got %s", ctx.DiffPath)
 	}
-	
+
 	if ctx.FilesPath != filepath.Join(".context", "reviews", "TEST-123-files.md") {
 		t.Errorf("Expected files path to be .context/reviews/TEST-123-files.md, got %s", ctx.FilesPath)
 	}
-	
+
 	if ctx.MaxTokens != 120000 {
 		t.Errorf("Expected max tokens to be 120000, got %d", ctx.MaxTokens)
 	}
-	
+
 	if ctx.Model != "gpt-4o" {
 		t.Errorf("Expected model to be gpt-4o, got %s", ctx.Model)
 	}
@@ -42,30 +42,79 @@ func TestInitialDiscoveryPrompt(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping test in short mode")
 	}
-	
-	// Create a review context with test content
-	ctx := &ReviewContext{
-		DiffContent:  "Test diff content",
-		FilesContent: "Test files content",
+
+	// Test cases
+	tests := []struct {
+		name            string
+		designDocContent string
+		expectDesignDoc  bool
+		expectAlignment  bool
+	}{
+		{
+			name:            "Without design document",
+			designDocContent: "",
+			expectDesignDoc:  false,
+			expectAlignment:  false,
+		},
+		{
+			name:            "With design document",
+			designDocContent: "# Test Design\n\nThis is a test design document.",
+			expectDesignDoc:  true,
+			expectAlignment:  true,
+		},
 	}
-	
-	// Create a workflow with our context
-	workflow := NewWorkflow(ctx)
-	
-	// Get the prompt
-	prompt := workflow.InitialDiscoveryPrompt()
-	
-	// Check that the prompt contains our test content
-	if prompt == "" {
-		t.Error("InitialDiscoveryPrompt() returned an empty string")
-	}
-	
-	// Check that the prompt contains our test content
-	if !strings.Contains(prompt, "Test diff content") {
-		t.Error("Prompt does not contain diff content")
-	}
-	
-	if !strings.Contains(prompt, "Test files content") {
-		t.Error("Prompt does not contain files content")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a review context with test content
+			ctx := &ReviewContext{
+				DiffContent:      "Test diff content",
+				FilesContent:     "Test files content",
+				DesignDocContent: tc.designDocContent,
+			}
+
+			// Create a workflow with our context
+			workflow := NewWorkflow(ctx)
+
+			// Get the prompt
+			prompt := workflow.InitialDiscoveryPrompt()
+
+			// Check that the prompt contains our test content
+			if prompt == "" {
+				t.Error("InitialDiscoveryPrompt() returned an empty string")
+			}
+
+			// Check that the prompt contains our test content
+			if !strings.Contains(prompt, "Test diff content") {
+				t.Error("Prompt does not contain diff content")
+			}
+
+			if !strings.Contains(prompt, "Test files content") {
+				t.Error("Prompt does not contain files content")
+			}
+
+			// Check for design document content
+			hasDesignDoc := strings.Contains(prompt, "Design Document")
+			if tc.expectDesignDoc && !hasDesignDoc {
+				t.Error("Prompt does not contain design document section when it should")
+			}
+			if !tc.expectDesignDoc && hasDesignDoc {
+				t.Error("Prompt contains design document section when it should not")
+			}
+
+			// Check for design alignment section
+			hasAlignment := strings.Contains(prompt, "Design Alignment")
+			if tc.expectAlignment && !hasAlignment {
+				t.Error("Prompt does not contain design alignment section when it should")
+			}
+			if !tc.expectAlignment && hasAlignment {
+				t.Error("Prompt contains design alignment section when it should not")
+			}
+
+			// If we expect design document content, check that it's actually there
+			if tc.expectDesignDoc && !strings.Contains(prompt, tc.designDocContent) {
+				t.Error("Prompt does not contain the actual design document content")
+			}
+		})
 	}
 }
