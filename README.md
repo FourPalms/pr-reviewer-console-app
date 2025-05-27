@@ -89,6 +89,7 @@ All review artifacts are saved in the `.context/reviews/` directory with the tic
 - `TICKET-files.md`: List of all changed files with statistics
 - `TICKET-initial-discovery.md`: Initial analysis of the changes
 - `TICKET-original-synthesis.md`: Synthesized understanding of the original implementation
+- `TICKET-review-result.md`: Comprehensive PR review with blockers and non-blockers in GitHub-compatible markdown
 
 These artifacts provide a comprehensive analysis that helps reviewers understand both the original code and the proposed changes.
 
