@@ -38,6 +38,103 @@ func TestNewReviewContext(t *testing.T) {
 	}
 }
 
+func TestLoadDesignDocument(t *testing.T) {
+	// Skip test if we're just checking compilation
+	if testing.Short() {
+		t.Skip("Skipping test in short mode")
+	}
+
+	// Create a temporary directory for our test files
+	tempDir := t.TempDir()
+	contextDir := filepath.Join(tempDir, ".context")
+	designDir := filepath.Join(contextDir, "design")
+	err := os.MkdirAll(designDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+
+	// Create a test design document
+	testDocName := "test-design.md"
+	testDocPath := filepath.Join(designDir, testDocName)
+	testContent := "# Test Design\n\nThis is a test design document."
+	err = os.WriteFile(testDocPath, []byte(testContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Test cases
+	tests := []struct {
+		name           string
+		designDocPath  string
+		expectedError  bool
+		expectedContent string
+	}{
+		{
+			name: "Existing design document",
+			designDocPath: testDocName,
+			expectedError: false,
+			expectedContent: testContent,
+		},
+		{
+			name: "Non-existent design document",
+			designDocPath: "non-existent.md",
+			expectedError: false, // Should not error, just log warning
+			expectedContent: "",
+		},
+		{
+			name: "Empty design document path",
+			designDocPath: "",
+			expectedError: false,
+			expectedContent: "",
+		},
+	}
+
+	// Save the original working directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	// Change to the temporary directory for the test
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change working directory: %v", err)
+	}
+
+	// Ensure we change back to the original directory when the test is done
+	defer func() {
+		err := os.Chdir(originalWd)
+		if err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	}()
+
+	// Run test cases
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a workflow with a context that has the design doc path set
+			ctx := &ReviewContext{
+				DesignDocPath: tc.designDocPath,
+			}
+			workflow := NewWorkflow(ctx)
+
+			// Call the method
+			err := workflow.LoadDesignDocument()
+
+			// Check results
+			if tc.expectedError && err == nil {
+				t.Errorf("Expected error but got none")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if ctx.DesignDocContent != tc.expectedContent {
+				t.Errorf("Expected content %q, got %q", tc.expectedContent, ctx.DesignDocContent)
+			}
+		})
+	}
+}
+
 func TestGeneratePRReviewPrompt(t *testing.T) {
 	// Skip test if we're just checking compilation
 	if testing.Short() {
@@ -63,19 +160,19 @@ func TestGeneratePRReviewPrompt(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name            string
+		name             string
 		designDocContent string
 		expectDesignDoc  bool
 		expectComparison bool
 	}{
 		{
-			name:            "Without design document",
+			name:             "Without design document",
 			designDocContent: "",
 			expectDesignDoc:  false,
 			expectComparison: false,
 		},
 		{
-			name:            "With design document",
+			name:             "With design document",
 			designDocContent: "# Test Design\n\nThis is a test design document.",
 			expectDesignDoc:  true,
 			expectComparison: true,
@@ -86,9 +183,9 @@ func TestGeneratePRReviewPrompt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a context with test content
 			ctx := &ReviewContext{
-				Ticket:          ticket,
-				OutputDir:       outputDir,
-				DiffContent:     "Test diff content",
+				Ticket:           ticket,
+				OutputDir:        outputDir,
+				DiffContent:      "Test diff content",
 				DesignDocContent: tc.designDocContent,
 			}
 
