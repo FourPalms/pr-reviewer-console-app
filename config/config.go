@@ -11,11 +11,11 @@ import (
 type Config struct {
 	OpenAIAPIKey string
 	Model        string
-	
+
 	// Jira settings
-	JiraURL      string
-	JiraEmail    string
-	JiraToken    string
+	JiraURL   string
+	JiraEmail string
+	JiraToken string
 }
 
 // Load loads the configuration from environment variables

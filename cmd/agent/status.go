@@ -30,21 +30,15 @@ func checkJiraStatus(cfg *config.Config) error {
 
 	// Print basic ticket info
 	fmt.Printf("Successfully retrieved ticket %s: %s\n", ticket.Key, ticket.Fields.Summary)
-
-	// Test the LLM-based ticket formatting
-	fmt.Println("\nTesting LLM-based ticket formatting...")
-	formattedTicket, err := client.FormatTicketAsMarkdown(ticket)
-	if err != nil {
-		return fmt.Errorf("failed to format ticket: %w", err)
+	
+	// Print additional ticket details
+	fmt.Printf("Status: %s\n", ticket.Fields.Status.Name)
+	if ticket.Fields.Assignee != nil {
+		fmt.Printf("Assignee: %s\n", ticket.Fields.Assignee.DisplayName)
 	}
-
-	// Print the formatted ticket
-	fmt.Println("\nFormatted Ticket:")
-	fmt.Println("=================")
-	fmt.Println()
-	fmt.Println(formattedTicket)
-	fmt.Println()
-	fmt.Println("=================")
+	if ticket.Fields.Reporter != nil {
+		fmt.Printf("Reporter: %s\n", ticket.Fields.Reporter.DisplayName)
+	}
 
 	return nil
 }

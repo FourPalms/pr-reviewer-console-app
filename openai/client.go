@@ -65,6 +65,24 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 		},
 	}
 
+	// Count tokens in the prompt
+	tokenCount, err := c.CountTokens(messages)
+	if err != nil {
+		return "", fmt.Errorf("error counting tokens: %w", err)
+	}
+
+	// Get the maximum token limit for the model
+	// GPT-4o has a 128K token limit, but we'll be conservative
+	maxTokens := 120000
+
+	// Check if the token count exceeds the maximum limit
+	if tokenCount > maxTokens {
+		return "", fmt.Errorf("token count (%d) exceeds maximum limit (%d)", tokenCount, maxTokens)
+	}
+
+	// Log the token count
+	fmt.Printf("Sending prompt to %s (token count: %d)...\n", c.model, tokenCount)
+
 	// Create the request body
 	reqBody := ChatCompletionRequest{
 		Model:    c.model,
