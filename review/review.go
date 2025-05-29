@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/jeremyhunt/agent-runner/logger"
 	"github.com/jeremyhunt/agent-runner/openai"
 	"github.com/jeremyhunt/agent-runner/tokens"
 )
@@ -149,19 +150,19 @@ func (w *Workflow) CountTokens() error {
 	w.Ctx.DiffContent = newDiffContent
 	w.Ctx.FilesContent = newFilesContent
 
-	// Print token information
-	fmt.Printf("Token counts for ticket %s:\n", w.Ctx.Ticket)
-	fmt.Printf("  Diff file:  %d tokens\n", diffTokens)
-	fmt.Printf("  Files list: %d tokens\n", filesTokens)
-	fmt.Printf("  Total:      %d tokens\n", totalTokens)
-	fmt.Printf("  Max tokens: %d\n", w.Ctx.MaxTokens)
+	// Log token information
+	logger.Verbose("Token counts for ticket %s:", w.Ctx.Ticket)
+	logger.Verbose("  Diff file:  %d tokens", diffTokens)
+	logger.Verbose("  Files list: %d tokens", filesTokens)
+	logger.Verbose("  Total:      %d tokens", totalTokens)
+	logger.Verbose("  Max tokens: %d", w.Ctx.MaxTokens)
 
 	if totalTokens > w.Ctx.MaxTokens {
-		fmt.Printf("WARNING: Content exceeds token limit by %d tokens\n", totalTokens-w.Ctx.MaxTokens)
+		logger.Error("Content exceeds token limit by %d tokens", totalTokens-w.Ctx.MaxTokens)
 		return fmt.Errorf("token limit exceeded: %d tokens (limit: %d)", totalTokens, w.Ctx.MaxTokens)
 	}
 
-	fmt.Printf("Tokens remaining: %d\n", w.Ctx.MaxTokens-totalTokens)
+	logger.Verbose("Tokens remaining: %d", w.Ctx.MaxTokens-totalTokens)
 	return nil
 }
 
@@ -171,7 +172,7 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 	prompt := promptFunc()
 
 	// 2. Send to LLM
-	fmt.Printf("Sending %s prompt to OpenAI...\n", stepName)
+	// Note: We don't need to log this here since it's already logged in the Step functions
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return fmt.Errorf("error in %s step: %w", stepName, err)
@@ -183,7 +184,8 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 		return fmt.Errorf("error saving %s output: %w", stepName, err)
 	}
 
-	fmt.Printf("%s step completed successfully. Output saved to %s\n", stepName, outputPath)
+	logger.Success("%s step completed", stepName)
+	logger.Debug("Output saved to %s", outputPath)
 	return nil
 }
 
@@ -229,7 +231,7 @@ Format your response in markdown with clear sections and code references.`
 	designDocInstruction := ""
 	if w.Ctx.DesignDocContent != "" {
 		designDocSection = fmt.Sprintf("\n\n## Design Document\n\nThe following design document provides context for this PR:\n\n%s\n\nPlease consider this design document when analyzing the PR changes.", w.Ctx.DesignDocContent)
-		designDocInstruction = "\n\n## 4. Design Alignment\n[Your assessment of how well the changes align with the design document]" 
+		designDocInstruction = "\n\n## 4. Design Alignment\n[Your assessment of how well the changes align with the design document]"
 	}
 
 	// Add ticket details if available
@@ -308,7 +310,7 @@ func (w *Workflow) CollectOriginalFileContents() error {
 		cmd.Dir = w.Ctx.RepoDir
 		content, err := cmd.Output()
 		if err != nil {
-			fmt.Printf("Warning: failed to get content for %s: %v\n", file, err)
+			logger.Debug("Warning: failed to get content for %s: %v", file, err)
 			continue
 		}
 
@@ -322,7 +324,7 @@ func (w *Workflow) CollectOriginalFileContents() error {
 		cmd.Dir = w.Ctx.RepoDir
 		content, err := cmd.Output()
 		if err != nil {
-			fmt.Printf("Warning: failed to get content for deleted file %s: %v\n", file, err)
+			logger.Debug("Warning: failed to get content for deleted file %s: %v", file, err)
 			continue
 		}
 
@@ -353,7 +355,8 @@ func (w *Workflow) CollectOriginalFileContents() error {
 		return fmt.Errorf("failed to write original file content: %w", err)
 	}
 
-	fmt.Printf("Original file contents saved to %s (%d tokens)\n", outputPath, tokenCount)
+	logger.Info("Original file contents saved (%d tokens)", tokenCount)
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
@@ -452,7 +455,7 @@ func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
 func (w *Workflow) AnalyzeFile(filename, content string) (string, error) {
 	prompt := w.FileAnalysisPrompt(filename, content)
 
-	fmt.Printf("Analyzing file: %s\n", filename)
+	// We don't need to log here since we're already logging in the worker
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return "", fmt.Errorf("error analyzing file %s: %w", filename, err)
@@ -505,8 +508,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 	// Create an atomic counter for active workers
 	var activeWorkers int32
 
-	// Print initial status message
-	fmt.Printf("Starting analysis of %d files using up to %d concurrent workers...\n", len(orderedFiles), numWorkers)
+	// We're already logging this in the Step function, so we don't need to log it here
 
 	// Launch worker goroutines
 	for workerID := 0; workerID < numWorkers; workerID++ {
@@ -520,15 +522,19 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 				// Print progress (protected by mutex to avoid garbled output)
 				resultsMutex.Lock()
-				fmt.Printf("[Worker %d] Analyzing file %d/%d: %s (Active workers: %d)\n",
-					id, i+1, len(orderedFiles), file, atomic.LoadInt32(&activeWorkers))
+				logger.AnalysisItem(id+1, file) // Use worker ID + 1 so it starts from 1 instead of 0
+				// Only print debug info in debug mode
+				if logger.IsDebugEnabled() {
+					logger.Debug("[Worker %d] Analyzing file %d/%d: %s (Active workers: %d)",
+						id, i+1, len(orderedFiles), file, atomic.LoadInt32(&activeWorkers))
+				}
 				resultsMutex.Unlock()
 
 				// Get original file content
 				content, err := w.GetOriginalFileContent(file)
 				if err != nil {
 					resultsMutex.Lock()
-					fmt.Printf("Warning: could not get content for %s: %v\n", file, err)
+					logger.Debug("Warning: could not get content for %s: %v", file, err)
 					resultsMutex.Unlock()
 
 					// Store the error result
@@ -541,7 +547,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 				analysis, err := w.AnalyzeFile(file, content)
 				if err != nil {
 					resultsMutex.Lock()
-					fmt.Printf("Warning: analysis failed for %s: %v\n", file, err)
+					logger.Debug("Warning: analysis failed for %s: %v", file, err)
 					resultsMutex.Unlock()
 
 					// Store the error result
@@ -595,7 +601,8 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 		return fmt.Errorf("failed to write analysis: %w", err)
 	}
 
-	fmt.Printf("Original implementation analysis saved to %s\n", outputPath)
+	logger.Info("Original implementation analysis saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
@@ -628,7 +635,7 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 	prompt += "\n\nProvide a clear, comprehensive synthesis that explains how this specific feature functioned as a cohesive system before the changes."
 
 	// 3. Send to LLM for synthesis
-	fmt.Println("Synthesizing file analyses...")
+	logger.Info("Synthesizing file analyses...")
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return fmt.Errorf("error synthesizing original implementation: %w", err)
@@ -655,7 +662,8 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 		return fmt.Errorf("failed to write synthesis: %w", err)
 	}
 
-	fmt.Printf("Original implementation synthesis saved to %s\n", outputPath)
+	logger.Info("Original implementation synthesis saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
@@ -665,7 +673,7 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
 	synthesisContent, err := os.ReadFile(synthesisPath)
 	if err != nil {
-		fmt.Printf("Warning: Could not read synthesis file: %v\n", err)
+		logger.Debug("Warning: Could not read synthesis file: %v", err)
 		synthesisContent = []byte("No synthesis available.")
 	}
 
@@ -763,16 +771,16 @@ func (w *Workflow) GeneratePRReview() error {
 	// 2. Count tokens in the prompt
 	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
 	if err != nil {
-		fmt.Printf("Warning: Could not count tokens in review prompt: %v\n", err)
+		logger.Debug("Warning: Could not count tokens in review prompt: %v", err)
 	} else {
-		fmt.Printf("PR review prompt contains %d tokens\n", tokenCount)
+		logger.Verbose("PR review prompt contains %d tokens", tokenCount)
 		if tokenCount > w.Ctx.MaxTokens/2 {
-			fmt.Printf("Warning: PR review prompt is very large (%d tokens)\n", tokenCount)
+			logger.Debug("Warning: PR review prompt is very large (%d tokens)", tokenCount)
 		}
 	}
 
 	// 3. Send to LLM for review
-	fmt.Println("Generating PR review...")
+	logger.Info("Generating PR review...")
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return fmt.Errorf("error generating PR review: %w", err)
@@ -799,40 +807,51 @@ func (w *Workflow) GeneratePRReview() error {
 		return fmt.Errorf("failed to write PR review: %w", err)
 	}
 
-	fmt.Printf("PR review saved to %s\n", outputPath)
+	logger.Info("PR review saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
+	// Set the total number of steps (we're skipping the token counting step)
+	logger.SetTotalSteps(5)
+	
+	// Assemble PR context section
+	logger.Section("ASSEMBLING PR CONTEXT")
+	
 	// Load design document if specified
-	err := w.LoadDesignDocument()
-	if err != nil {
-		return fmt.Errorf("error loading design document: %w", err)
+	if w.Ctx.DesignDocPath != "" {
+		logger.Info("%s Loading design document", logger.Arrow())
+		err := w.LoadDesignDocument()
+		if err != nil {
+			return fmt.Errorf("error loading design document: %w", err)
+		}
+		// Success message is printed in LoadDesignDocument, so we don't need to print it here
 	}
 
 	// Fetch and format Jira ticket information if a ticket is specified
 	if w.Ctx.Ticket != "" {
-		err = w.LoadTicketDetails()
+		logger.Info("%s Fetching Jira ticket", logger.Arrow())
+		err := w.LoadTicketDetails()
 		if err != nil {
 			// If we can't load the ticket details, log the error and exit
-			fmt.Printf("Error: Failed to load Jira ticket details: %v\n", err)
-			fmt.Println("Please check your Jira credentials and try again.")
+			logger.Error("Failed to load Jira ticket details: %v", err)
+			logger.Error("Please check your Jira credentials and try again.")
 			os.Exit(1)
 		}
-		fmt.Printf("Jira ticket %s loaded successfully\n", w.Ctx.Ticket)
+		logger.Success("Jira ticket %s loaded successfully", w.Ctx.Ticket)
 	}
 
-	// Step 1: Count tokens
-	fmt.Println("Step 1: Counting tokens...")
-	err = w.CountTokens()
+	// We'll still count tokens internally, but not show it as a numbered step
+	err := w.CountTokens()
 	if err != nil {
 		return fmt.Errorf("error counting tokens: %w", err)
 	}
-	fmt.Println("Token counting completed successfully.")
 
-	// Step 2: Initial discovery
-	fmt.Println("Step 2: Performing initial discovery...")
+	// Step 1: Initial discovery
+	logger.Step("Performing initial discovery")
+	logger.StepDetail("Sending Initial Discovery prompt to OpenAI")
 	err = w.RunLLMStep(
 		"Initial Discovery",
 		w.InitialDiscoveryPrompt,
@@ -842,37 +861,53 @@ func (w *Workflow) Run() error {
 		return err
 	}
 
-	// Step 3: Collect original file contents
-	fmt.Println("Step 3: Collecting original file contents...")
+	// Step 2: Collect original file contents
+	logger.Step("Collecting original file contents")
 	err = w.CollectOriginalFileContents()
 	if err != nil {
 		return fmt.Errorf("error collecting original file contents: %w", err)
 	}
-	fmt.Println("Original file content collection completed successfully.")
+	logger.Success("Original file content collection completed")
 
-	// Step 4: Analyze original implementation
-	fmt.Println("Step 4: Analyzing original implementation...")
+	// Step 3: Analyze original implementation
+	logger.Section("CODE ANALYSIS")
+	logger.Step("Analyzing original implementation")
+	// Get the number of files to analyze from the recommended file order
+	orderedFiles, err := w.ParseRecommendedFileOrder()
+	if err != nil {
+		logger.Debug("Could not parse recommended file order: %v", err)
+		logger.StepDetail("Starting file analysis using concurrent workers")
+	} else {
+		logger.StepDetail("Starting analysis of %d files using up to %d concurrent workers", len(orderedFiles), 5)
+	}
 	err = w.AnalyzeOriginalImplementation()
 	if err != nil {
 		return fmt.Errorf("error analyzing original implementation: %w", err)
 	}
-	fmt.Println("Original implementation analysis completed successfully.")
+	logger.Success("Original implementation analysis completed")
 
-	// Step 5: Synthesize original implementation
-	fmt.Println("Step 5: Synthesizing original implementation...")
+	// Step 4: Synthesize original implementation
+	logger.Step("Synthesizing original implementation")
+	logger.StepDetail("Synthesizing file analyses")
 	err = w.SynthesizeOriginalImplementation()
 	if err != nil {
 		return fmt.Errorf("error synthesizing original implementation: %w", err)
 	}
-	fmt.Println("Original implementation synthesis completed successfully.")
+	logger.Success("Original implementation synthesis completed")
 
-	// Step 6: Generate PR review
-	fmt.Println("Step 6: Generating PR review...")
+	// Step 5: Generate PR review
+	logger.Section("PR REVIEW GENERATION")
+	logger.Step("Generating PR review")
+	logger.StepDetail("Generating PR review")
 	err = w.GeneratePRReview()
 	if err != nil {
 		return fmt.Errorf("error generating PR review: %w", err)
 	}
-	fmt.Println("PR review generation completed successfully.")
+	logger.Success("PR review saved")
+	logger.Success("PR review generation completed")
+	
+	// Complete the process with timing information
+	logger.Complete()
 
 	return nil
 }
