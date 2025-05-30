@@ -134,6 +134,13 @@ func AnalysisItem(workerNum int, filename string) {
 	}
 }
 
+// AnalysisCompleted prints a message when a file analysis is completed
+func AnalysisCompleted(workerNum int, filename string) {
+	if verbosity >= VerbosityNormal {
+		fmt.Printf("  [%d] %s Completed: %s\n", workerNum, checkmark, filename)
+	}
+}
+
 // Success prints a success message
 func Success(format string, args ...interface{}) {
 	if verbosity >= VerbosityNormal {

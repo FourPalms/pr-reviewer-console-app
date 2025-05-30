@@ -558,6 +558,12 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 				// Store the successful result
 				results[i] = analysisResult{file: file, analysis: analysis, index: i}
+				
+				// Log completion with the same mutex protection
+				resultsMutex.Lock()
+				logger.AnalysisCompleted(id+1, file)
+				resultsMutex.Unlock()
+				
 				// Decrement active workers counter
 				atomic.AddInt32(&activeWorkers, -1)
 				wg.Done()
@@ -575,7 +581,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 	// Wait for all files to be processed
 	wg.Wait()
-	
+
 	// Add a blank line after all workers have completed
 	fmt.Println()
 
