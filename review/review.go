@@ -355,7 +355,7 @@ func (w *Workflow) CollectOriginalFileContents() error {
 		return fmt.Errorf("failed to write original file content: %w", err)
 	}
 
-	logger.Info("Original file contents saved (%d tokens)", tokenCount)
+	logger.Debug("Original file contents saved (%d tokens)", tokenCount)
 	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
@@ -575,6 +575,9 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 	// Wait for all files to be processed
 	wg.Wait()
+	
+	// Add a blank line after all workers have completed
+	fmt.Println()
 
 	// Process results in the original order
 	for _, result := range results {
@@ -601,7 +604,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 		return fmt.Errorf("failed to write analysis: %w", err)
 	}
 
-	logger.Info("Original implementation analysis saved")
+	logger.Debug("Original implementation analysis saved")
 	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
@@ -635,7 +638,7 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 	prompt += "\n\nProvide a clear, comprehensive synthesis that explains how this specific feature functioned as a cohesive system before the changes."
 
 	// 3. Send to LLM for synthesis
-	logger.Info("Synthesizing file analyses...")
+	logger.Debug("Synthesizing file analyses...")
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return fmt.Errorf("error synthesizing original implementation: %w", err)
@@ -662,7 +665,7 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 		return fmt.Errorf("failed to write synthesis: %w", err)
 	}
 
-	logger.Info("Original implementation synthesis saved")
+	logger.Debug("Original implementation synthesis saved")
 	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
@@ -780,7 +783,7 @@ func (w *Workflow) GeneratePRReview() error {
 	}
 
 	// 3. Send to LLM for review
-	logger.Info("Generating PR review...")
+	logger.Debug("Generating PR review...")
 	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
 	if err != nil {
 		return fmt.Errorf("error generating PR review: %w", err)
@@ -807,7 +810,7 @@ func (w *Workflow) GeneratePRReview() error {
 		return fmt.Errorf("failed to write PR review: %w", err)
 	}
 
-	logger.Info("PR review saved")
+	logger.Debug("PR review saved")
 	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
@@ -816,10 +819,12 @@ func (w *Workflow) GeneratePRReview() error {
 func (w *Workflow) Run() error {
 	// Set the total number of steps (we're skipping the token counting step)
 	logger.SetTotalSteps(5)
-	
+
 	// Assemble PR context section
+	// Add an extra blank line before the first section
+	fmt.Println()
 	logger.Section("ASSEMBLING PR CONTEXT")
-	
+
 	// Load design document if specified
 	if w.Ctx.DesignDocPath != "" {
 		logger.Info("%s Loading design document", logger.Arrow())
@@ -877,13 +882,19 @@ func (w *Workflow) Run() error {
 	if err != nil {
 		logger.Debug("Could not parse recommended file order: %v", err)
 		logger.StepDetail("Starting file analysis using concurrent workers")
+		// Add a blank line after the message
+		fmt.Println()
 	} else {
 		logger.StepDetail("Starting analysis of %d files using up to %d concurrent workers", len(orderedFiles), 5)
+		// Add a blank line after the message
+		fmt.Println()
 	}
 	err = w.AnalyzeOriginalImplementation()
 	if err != nil {
 		return fmt.Errorf("error analyzing original implementation: %w", err)
 	}
+	// Add a blank line before the success message
+	fmt.Println()
 	logger.Success("Original implementation analysis completed")
 
 	// Step 4: Synthesize original implementation
@@ -893,6 +904,8 @@ func (w *Workflow) Run() error {
 	if err != nil {
 		return fmt.Errorf("error synthesizing original implementation: %w", err)
 	}
+	// Add a blank line before the success message
+	fmt.Println()
 	logger.Success("Original implementation synthesis completed")
 
 	// Step 5: Generate PR review
@@ -903,9 +916,11 @@ func (w *Workflow) Run() error {
 	if err != nil {
 		return fmt.Errorf("error generating PR review: %w", err)
 	}
+	// Add a blank line before the success messages
+	fmt.Println()
 	logger.Success("PR review saved")
 	logger.Success("PR review generation completed")
-	
+
 	// Complete the process with timing information
 	logger.Complete()
 

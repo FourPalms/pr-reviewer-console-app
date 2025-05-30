@@ -47,11 +47,11 @@ func Initialize(level VerbosityLevel) {
 	currentSection = ""
 	totalSteps = 0
 	currentStep = 0
-	
+
 	// Print a nice header at the start if not in quiet mode
 	if verbosity >= VerbosityNormal {
 		fmt.Println()
-		fmt.Println("AGENT RUNNER PR REVIEW TOOL")
+		fmt.Println("AUTOMATED AGENTIC PR REVIEW TOOL")
 		fmt.Println(strings.Repeat("-", 30))
 		fmt.Println()
 	}
@@ -76,11 +76,11 @@ func Section(name string) {
 		if currentSection != "" {
 			fmt.Println()
 		}
-		
+
 		// Print section header
 		fmt.Printf("%s:\n", strings.ToUpper(name))
 	}
-	
+
 	currentSection = name
 }
 
@@ -145,7 +145,7 @@ func Success(format string, args ...interface{}) {
 func Complete() {
 	if verbosity >= VerbosityNormal {
 		elapsed := time.Since(startTime)
-		
+
 		// Print a separator and completion message
 		fmt.Println()
 		fmt.Println(strings.Repeat("-", 50))
@@ -153,7 +153,7 @@ func Complete() {
 		fmt.Printf("Total time: %s\n", formatDuration(elapsed))
 		fmt.Println()
 	}
-	
+
 	// Reset step counter for next run
 	currentStep = 0
 }
@@ -164,7 +164,7 @@ func formatDuration(d time.Duration) string {
 	seconds := int(d.Seconds())
 	minutes := seconds / 60
 	seconds %= 60
-	
+
 	if minutes > 0 {
 		return fmt.Sprintf("%dm %ds", minutes, seconds)
 	}
