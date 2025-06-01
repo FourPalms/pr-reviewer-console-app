@@ -187,6 +187,7 @@ func TestGenerateSyntaxReviewPrompt(t *testing.T) {
 				OutputDir:        outputDir,
 				DiffContent:      "Test diff content",
 				DesignDocContent: tc.designDocContent,
+				SynthesisContent: synthesisContent,
 			}
 
 			// Create a workflow with our context

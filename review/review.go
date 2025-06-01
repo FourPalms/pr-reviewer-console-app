@@ -60,11 +60,12 @@ type ReviewContext struct {
 	TicketDetails string
 
 	// Results from processing steps
-	DiffContent  string
-	FilesContent string
-	DiffTokens   int
-	FilesTokens  int
-	TotalTokens  int
+	DiffContent      string
+	FilesContent     string
+	SynthesisContent string
+	DiffTokens       int
+	FilesTokens      int
+	TotalTokens      int
 }
 
 // NewReviewContext creates a new ReviewContext with default values
@@ -665,7 +666,10 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 		outputContent = sb.String()
 	}
 
-	// 6. Write the result to a file
+	// 6. Store the synthesis content in the context for later use
+	w.Ctx.SynthesisContent = outputContent
+
+	// 7. Write the result to a file
 	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write synthesis: %w", err)
@@ -678,12 +682,10 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 
 // GenerateSyntaxReviewPrompt creates a prompt for the syntax and best practices review step
 func (w *Workflow) GenerateSyntaxReviewPrompt() string {
-	// Read the original synthesis file
-	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
-	synthesisContent, err := os.ReadFile(synthesisPath)
-	if err != nil {
-		logger.Debug("Warning: Could not read synthesis file: %v", err)
-		synthesisContent = []byte("No synthesis available.")
+	// Use the synthesis content stored in the context
+	synthesisContent := "No synthesis available."
+	if w.Ctx.SynthesisContent != "" {
+		synthesisContent = w.Ctx.SynthesisContent
 	}
 
 	// Build the prompt using a string builder for better maintainability
@@ -757,7 +759,7 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 
 	// Original implementation
 	sb.WriteString("### Original Implementation\n\n")
-	sb.WriteString(string(synthesisContent))
+	sb.WriteString(synthesisContent)
 
 	// PR changes
 	sb.WriteString("\n\n### Changes in this PR\n\n")
@@ -780,12 +782,10 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 
 // GenerateFunctionalityReviewPrompt creates a prompt for the functionality review step
 func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
-	// Read the original synthesis file
-	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
-	synthesisContent, err := os.ReadFile(synthesisPath)
-	if err != nil {
-		logger.Debug("Warning: Could not read synthesis file: %v", err)
-		synthesisContent = []byte("No synthesis available.")
+	// Use the synthesis content stored in the context
+	synthesisContent := "No synthesis available."
+	if w.Ctx.SynthesisContent != "" {
+		synthesisContent = w.Ctx.SynthesisContent
 	}
 
 	// Build the prompt using a string builder for better maintainability
@@ -803,8 +803,8 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 	sb.WriteString("For this functionality review, focus on:\n\n")
 	sb.WriteString("Use the included context of Jira ticket content and (if exists) design doc content to determine whether or not the implement code completely and correctly satisfies all requirements.")
 	sb.WriteString("List any missing or incorrectly implemented functionality separately")
-	sb.WriteString("WITH COMPLETE HONESTY ANSWER: Am I able, with the given context, to review this implementation thoroughly?")
-	sb.WriteString("WITH COMPLETE HONESTY ANSWER: What context is missing or would be helpful if the above answer is NO")
+	sb.WriteString("WITH COMPLETE HONESTY ANSWER: Am I able, with the given context, to review this implementation thoroughly? Yes or No, then why if No.")
+	sb.WriteString("WITH COMPLETE HONESTY ANSWER: What context is missing or would be helpful if the above answer is NO. Be specific on WHY this is needed for the review, after asking: would a Sr Dev on the team expect to the have the context I think is missing?.")
 
 	// Machine consumption format section
 	sb.WriteString("## Machine Consumption Format\n\n")
@@ -836,7 +836,7 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 
 	// Original implementation
 	sb.WriteString("### Original Implementation\n\n")
-	sb.WriteString(string(synthesisContent))
+	sb.WriteString(synthesisContent)
 
 	// PR changes
 	sb.WriteString("\n\n### Changes in this PR\n\n")
@@ -947,7 +947,77 @@ func (w *Workflow) GenerateSyntaxReview() error {
 
 // GenerateFunctionalityReview generates a review focusing on functionality against requirements
 func (w *Workflow) GenerateFunctionalityReview() error {
-	// This will be implemented in Phase 3
+	// 1. Generate the prompt
+	prompt := w.GenerateFunctionalityReviewPrompt()
+
+	// 2. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		logger.Debug("Warning: Could not count tokens in functionality review prompt: %v", err)
+	} else {
+		logger.Verbose("Functionality review prompt contains %d tokens", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			logger.Debug("Warning: Functionality review prompt is very large (%d tokens)", tokenCount)
+		}
+	}
+
+	// 3. Send to LLM for review
+	logger.Debug("Generating functionality review...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating functionality review: %w", err)
+	}
+
+	// 4. Create or append to the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+
+	// Check if file exists
+	var content []byte
+	fileExists := false
+	if _, err := os.Stat(outputPath); err == nil {
+		// File exists, read it
+		content, err = os.ReadFile(outputPath)
+		if err != nil {
+			return fmt.Errorf("error reading existing review file: %w", err)
+		}
+		fileExists = true
+	}
+
+	// Prepare content to write
+	var sb strings.Builder
+	if !fileExists {
+		// Create new file with header
+		sb.WriteString("# PR Review Results\n\n")
+		sb.WriteString("This document contains a thorough review of the PR changes from multiple perspectives.\n\n")
+	}
+
+	// Append existing content if any
+	if fileExists {
+		sb.Write(content)
+		// Add a separator
+		sb.WriteString("\n\n---\n\n")
+	}
+
+	// Add the functionality review section
+	sb.WriteString(response)
+
+	// 5. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err = w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil && !fileExists {
+		// Only add token count info if this is a new file
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis review contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+
+	// 6. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write functionality review: %w", err)
+	}
+
+	logger.Debug("Functionality review saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
