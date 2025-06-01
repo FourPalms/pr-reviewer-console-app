@@ -986,6 +986,16 @@ func (w *Workflow) Run() error {
 	// Begin the PR review section
 	logger.Section("PR REVIEW GENERATION")
 
+	// Delete any existing review file to start fresh
+	reviewFilePath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+	if _, err := os.Stat(reviewFilePath); err == nil {
+		logger.Debug("Removing existing review file: %s", reviewFilePath)
+		err = os.Remove(reviewFilePath)
+		if err != nil {
+			logger.Debug("Warning: Could not remove existing review file: %v", err)
+		}
+	}
+
 	// Step 5: Generate Syntax Review
 	logger.Step("Generating syntax and best practices review")
 	logger.StepDetail("Analyzing PHP syntax and best practices")
