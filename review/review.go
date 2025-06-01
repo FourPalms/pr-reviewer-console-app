@@ -780,8 +780,81 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 
 // GenerateFunctionalityReviewPrompt creates a prompt for the functionality review step
 func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
-	// Empty implementation for now - will be collaboratively designed
-	return ""
+	// Read the original synthesis file
+	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
+	synthesisContent, err := os.ReadFile(synthesisPath)
+	if err != nil {
+		logger.Debug("Warning: Could not read synthesis file: %v", err)
+		synthesisContent = []byte("No synthesis available.")
+	}
+
+	// Build the prompt using a string builder for better maintainability
+	var sb strings.Builder
+
+	// Overview section - common across all review types
+	sb.WriteString("# Code Review: Implementation vs Requirements\n\n")
+	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
+	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString("Your goal is to identify missing or incorrect functionality that could cause the team problems. ")
+	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
+
+	// Review focus section
+	sb.WriteString("## Review Focus\n\n")
+	sb.WriteString("For this functionality review, focus on:\n\n")
+	sb.WriteString("Use the included context of Jira ticket content and (if exists) design doc content to determine whether or not the implement code completely and correctly satisfies all requirements.")
+	sb.WriteString("List any missing or incorrectly implemented functionality separately")
+	sb.WriteString("WITH COMPLETE HONESTY ANSWER: Am I able, with the given context, to review this implementation thoroughly?")
+	sb.WriteString("WITH COMPLETE HONESTY ANSWER: What context is missing or would be helpful if the above answer is NO")
+
+	// Machine consumption format section
+	sb.WriteString("## Machine Consumption Format\n\n")
+	sb.WriteString("IMPORTANT: Your output will be processed by another LLM to create a consolidated review, not read directly by humans.\n\n")
+	sb.WriteString("Use these consistent tags and format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<FUNCTIONALITY_REVIEW>\n")
+	sb.WriteString("  <REVIEW_SUMMARY>\n")
+	sb.WriteString("  Brief assessment of findings and limitations\n")
+	sb.WriteString("  </REVIEW_SUMMARY>\n\n")
+
+	sb.WriteString("  <FUNCTIONALITY_ISSUES>\n")
+	sb.WriteString("  [List misses or errors in implemented functionality, as compared to ticket/design doc reqs]\n")
+	sb.WriteString("  </FUNCTIONALITY_ISSUES>\n\n")
+
+	sb.WriteString("  <REVIEW_LIMITATIONS>\n")
+	sb.WriteString("  [State if able to do a thorough review]\n")
+	sb.WriteString("  [State what additional context would help]\n")
+	sb.WriteString("  </REVIEW_LIMITATIONS>\n")
+	sb.WriteString("</FUNCTIONALITY_REVIEW>\n")
+	sb.WriteString("```\n\n")
+
+	sb.WriteString("If no issues found in a category: `<NO_ISSUES_FOUND/>`\n\n")
+	sb.WriteString("Focus exclusively on functionality implementation per ticket/design doc - ignore broader syntax and logic concerns.\n\n")
+
+	// Context section
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("The following context is provided for your review:\n\n")
+
+	// Original implementation
+	sb.WriteString("### Original Implementation\n\n")
+	sb.WriteString(string(synthesisContent))
+
+	// PR changes
+	sb.WriteString("\n\n### Changes in this PR\n\n")
+	sb.WriteString(w.Ctx.DiffContent)
+
+	// Add design document if available
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("\n\n### Design Document\n\n")
+		sb.WriteString(w.Ctx.DesignDocContent)
+	}
+
+	// Add ticket details if available
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("\n\n### Jira Ticket\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+	}
+
+	return sb.String()
 }
 
 // GenerateDefensiveReviewPrompt creates a prompt for the defensive programming review step
