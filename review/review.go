@@ -558,12 +558,12 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 				// Store the successful result
 				results[i] = analysisResult{file: file, analysis: analysis, index: i}
-				
+
 				// Log completion with the same mutex protection
 				resultsMutex.Lock()
 				logger.AnalysisCompleted(id+1, file)
 				resultsMutex.Unlock()
-				
+
 				// Decrement active workers counter
 				atomic.AddInt32(&activeWorkers, -1)
 				wg.Done()
@@ -676,7 +676,32 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 	return nil
 }
 
+// GenerateSyntaxReviewPrompt creates a prompt for the syntax and best practices review step
+func (w *Workflow) GenerateSyntaxReviewPrompt() string {
+	// This will be implemented in Phase 2
+	return ""
+}
+
+// GenerateFunctionalityReviewPrompt creates a prompt for the functionality review step
+func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
+	// This will be implemented in Phase 2
+	return ""
+}
+
+// GenerateDefensiveReviewPrompt creates a prompt for the defensive programming review step
+func (w *Workflow) GenerateDefensiveReviewPrompt() string {
+	// This will be implemented in Phase 2
+	return ""
+}
+
+// GenerateFinalSummaryPrompt creates a prompt for the final summary step
+func (w *Workflow) GenerateFinalSummaryPrompt() string {
+	// This will be implemented in Phase 2
+	return ""
+}
+
 // GeneratePRReviewPrompt creates a prompt for the PR review step
+// This is kept for backward compatibility but will be replaced by specialized review prompts
 func (w *Workflow) GeneratePRReviewPrompt() string {
 	// Read the original synthesis file
 	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
@@ -772,7 +797,32 @@ func (w *Workflow) GeneratePRReviewPrompt() string {
 	return sb.String()
 }
 
+// GenerateSyntaxReview generates a review focusing on PHP syntax and best practices
+func (w *Workflow) GenerateSyntaxReview() error {
+	// This will be implemented in Phase 3
+	return nil
+}
+
+// GenerateFunctionalityReview generates a review focusing on functionality against requirements
+func (w *Workflow) GenerateFunctionalityReview() error {
+	// This will be implemented in Phase 3
+	return nil
+}
+
+// GenerateDefensiveReview generates a review focusing on defensive programming
+func (w *Workflow) GenerateDefensiveReview() error {
+	// This will be implemented in Phase 3
+	return nil
+}
+
+// GenerateFinalSummary generates a human-friendly summary of all reviews
+func (w *Workflow) GenerateFinalSummary() error {
+	// This will be implemented in Phase 3
+	return nil
+}
+
 // GeneratePRReview generates a comprehensive PR review
+// This is kept for backward compatibility but will be replaced by specialized review functions
 func (w *Workflow) GeneratePRReview() error {
 	// 1. Generate the prompt
 	prompt := w.GeneratePRReviewPrompt()
@@ -824,7 +874,7 @@ func (w *Workflow) GeneratePRReview() error {
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Set the total number of steps (we're skipping the token counting step)
-	logger.SetTotalSteps(5)
+	logger.SetTotalSteps(8)
 
 	// Assemble PR context section
 	// Add an extra blank line before the first section
@@ -914,17 +964,52 @@ func (w *Workflow) Run() error {
 	fmt.Println()
 	logger.Success("Original implementation synthesis completed")
 
-	// Step 5: Generate PR review
+	// Begin the PR review section
 	logger.Section("PR REVIEW GENERATION")
-	logger.Step("Generating PR review")
-	logger.StepDetail("Generating PR review")
-	err = w.GeneratePRReview()
+
+	// Step 5: Generate Syntax Review
+	logger.Step("Generating syntax and best practices review")
+	logger.StepDetail("Analyzing PHP syntax and best practices")
+	err = w.GenerateSyntaxReview()
 	if err != nil {
-		return fmt.Errorf("error generating PR review: %w", err)
+		return fmt.Errorf("error generating syntax review: %w", err)
+	}
+	// Add a blank line before the success message
+	fmt.Println()
+	logger.Success("Syntax review completed")
+
+	// Step 6: Generate Functionality Review
+	logger.Step("Generating functionality review")
+	logger.StepDetail("Analyzing functionality against requirements")
+	err = w.GenerateFunctionalityReview()
+	if err != nil {
+		return fmt.Errorf("error generating functionality review: %w", err)
+	}
+	// Add a blank line before the success message
+	fmt.Println()
+	logger.Success("Functionality review completed")
+
+	// Step 7: Generate Defensive Programming Review
+	logger.Step("Generating defensive programming review")
+	logger.StepDetail("Analyzing defensive programming aspects")
+	err = w.GenerateDefensiveReview()
+	if err != nil {
+		return fmt.Errorf("error generating defensive programming review: %w", err)
+	}
+	// Add a blank line before the success message
+	fmt.Println()
+	logger.Success("Defensive programming review completed")
+
+	// Step 8: Generate Final Summary
+	logger.Step("Generating final review summary")
+	logger.StepDetail("Creating human-friendly review summary")
+	err = w.GenerateFinalSummary()
+	if err != nil {
+		return fmt.Errorf("error generating final summary: %w", err)
 	}
 	// Add a blank line before the success messages
 	fmt.Println()
-	logger.Success("PR review saved")
+	logger.Success("Final review summary saved")
 	logger.Success("PR review generation completed")
 
 	// Complete the process with timing information
