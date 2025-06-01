@@ -805,6 +805,7 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 	sb.WriteString("List any missing or incorrectly implemented functionality separately")
 	sb.WriteString("WITH COMPLETE HONESTY ANSWER: Am I able, with the given context, to review this implementation thoroughly? Yes or No, then why if No.")
 	sb.WriteString("WITH COMPLETE HONESTY ANSWER: What context is missing or would be helpful if the above answer is NO. Be specific on WHY this is needed for the review, after asking: would a Sr Dev on the team expect to the have the context I think is missing?.")
+	sb.WriteString("Again, NO above, explain exactly HOW you would use the context you suggest is missing, if you had it.")
 
 	// Machine consumption format section
 	sb.WriteString("## Machine Consumption Format\n\n")
