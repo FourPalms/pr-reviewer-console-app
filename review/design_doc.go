@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/jeremyhunt/agent-runner/logger"
 )
 
 // LoadDesignDocument loads the design document if it exists
@@ -17,7 +19,7 @@ func (w *Workflow) LoadDesignDocument() error {
 
 	// Check if the file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		fmt.Printf("Warning: Design document %s not found at %s\n", w.Ctx.DesignDocPath, fullPath)
+		logger.Debug("Warning: Design document %s not found at %s", w.Ctx.DesignDocPath, fullPath)
 		return nil // Continue without the design doc
 	}
 
@@ -29,6 +31,6 @@ func (w *Workflow) LoadDesignDocument() error {
 
 	// Store the content
 	w.Ctx.DesignDocContent = string(content)
-	fmt.Printf("Design document %s loaded successfully\n", w.Ctx.DesignDocPath)
+	logger.Success("Design document %s loaded successfully", w.Ctx.DesignDocPath)
 	return nil
 }

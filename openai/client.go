@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jeremyhunt/agent-runner/logger"
 	"github.com/jeremyhunt/agent-runner/tokens"
 	"github.com/sashabaranov/go-openai"
 )
@@ -81,7 +82,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	}
 
 	// Log the token count
-	fmt.Printf("Sending prompt to %s (token count: %d)...\n", c.model, tokenCount)
+	logger.Verbose("Sending prompt to %s (token count: %d)", c.model, tokenCount)
 
 	// Create the request body
 	reqBody := ChatCompletionRequest{

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jeremyhunt/agent-runner/config"
+	"github.com/jeremyhunt/agent-runner/logger"
 	"github.com/jeremyhunt/agent-runner/openai"
 	"github.com/jeremyhunt/agent-runner/review"
 )
@@ -24,6 +25,11 @@ func main() {
 	branchFlag := flag.String("branch", "", "PR branch name for review (e.g., username/WIRE-1231)")
 	designDocFlag := flag.String("design-doc", "", "Design document name to include in review context (e.g., WIRE-1231-design.md)")
 
+	// Verbosity flags
+	verboseFlag := flag.Bool("verbose", false, "Enable verbose output")
+	quietFlag := flag.Bool("quiet", false, "Minimize console output")
+	debugFlag := flag.Bool("debug", false, "Enable debug output")
+
 	// Parse flags
 	flag.Parse()
 
@@ -34,6 +40,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set verbosity level based on flags
+	if *debugFlag {
+		cfg.Verbosity = logger.VerbosityDebug
+	} else if *verboseFlag {
+		cfg.Verbosity = logger.VerbosityVerbose
+	} else if *quietFlag {
+		cfg.Verbosity = logger.VerbosityQuiet
+	}
+
+	// Initialize logger with verbosity level
+	logger.Initialize(cfg.Verbosity)
+
+	// Only show the model info in normal verbosity mode
+	if cfg.Verbosity == logger.VerbosityNormal {
+		logger.Info("Using model: %s", cfg.Model)
+	}
+
 	// Override model if specified via flag
 	if *modelFlag != "" {
 		cfg.Model = *modelFlag
@@ -42,8 +65,7 @@ func main() {
 	// Create OpenAI client
 	client := openai.NewClient(cfg.OpenAIAPIKey, cfg.Model)
 
-	// Print which model we're using
-	fmt.Printf("Using model: %s\n", cfg.Model)
+	// Model info already logged during initialization
 
 	// Check if status mode is enabled
 	if *statusFlag {
@@ -78,8 +100,8 @@ func main() {
 	}
 
 	// Interactive mode
-	fmt.Println("Agent Runner v0.1.0")
-	fmt.Println("Type your prompt and press Enter. Type 'exit' to quit.")
+	logger.Info("Agent Runner v0.1.0")
+	logger.Info("Type your prompt and press Enter. Type 'exit' to quit.")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -109,7 +131,7 @@ func handlePrompt(client *openai.Client, prompt string) {
 		return
 	}
 
-	fmt.Printf("Sending prompt to OpenAI... (%d tokens)\n", tokenCount)
+	logger.Verbose("Sending prompt to OpenAI (%d tokens)", tokenCount)
 
 	response, err := client.Complete(context.Background(), prompt)
 	if err != nil {
@@ -123,7 +145,7 @@ func handlePrompt(client *openai.Client, prompt string) {
 
 // handleReview runs the PR review workflow
 func handleReview(client *openai.Client, ticket string, repo string, branch string, designDoc string) {
-	fmt.Printf("Starting PR review for ticket %s...\n", ticket)
+	logger.Info("Starting PR review for ticket %s", ticket)
 
 	// Create review context
 	ctx := review.NewReviewContext(ticket, client)
@@ -136,17 +158,17 @@ func handleReview(client *openai.Client, ticket string, repo string, branch stri
 			repoName = repo[idx+1:]
 		}
 		ctx.RepoDir = filepath.Join(".context", "projects", repoName)
-		fmt.Printf("Using repository at %s\n", ctx.RepoDir)
+		logger.Info("Using repository at %s", ctx.RepoDir)
 	}
 
 	if branch != "" {
 		ctx.Branch = branch
-		fmt.Printf("Using PR branch %s\n", ctx.Branch)
+		logger.Info("Using PR branch %s", ctx.Branch)
 	}
 
 	if designDoc != "" {
 		ctx.DesignDocPath = designDoc
-		fmt.Printf("Using design document %s\n", designDoc)
+		logger.Info("Using design document %s", designDoc)
 	}
 
 	// Create workflow
@@ -159,5 +181,5 @@ func handleReview(client *openai.Client, ticket string, repo string, branch stri
 		os.Exit(1)
 	}
 
-	fmt.Println("PR review completed successfully.")
+	logger.Success("PR review completed successfully")
 }

@@ -29,13 +29,21 @@ run:
 	fi
 
 # Run the application in review mode
-# Usage: make run-review TICKET=WIRE-1231
+# Usage: make run-review TICKET=WIRE-1231 REPO=BambooHR/repo-name BRANCH=username/WIRE-1231
 run-review:
 	@if [ -z "$(TICKET)" ]; then \
-		echo "Error: TICKET parameter is required. Usage: make run-review TICKET=WIRE-1231"; \
+		echo "Error: TICKET parameter is required. Usage: make run-review TICKET=WIRE-1231 REPO=BambooHR/repo-name BRANCH=username/WIRE-1231"; \
 		exit 1; \
 	fi
-	@go run ./cmd/agent --review --ticket=$(TICKET)
+	@if [ -z "$(REPO)" ]; then \
+		echo "Error: REPO parameter is required. Usage: make run-review TICKET=WIRE-1231 REPO=BambooHR/repo-name BRANCH=username/WIRE-1231"; \
+		exit 1; \
+	fi
+	@if [ -z "$(BRANCH)" ]; then \
+		echo "Error: BRANCH parameter is required. Usage: make run-review TICKET=WIRE-1231 REPO=BambooHR/repo-name BRANCH=username/WIRE-1231"; \
+		exit 1; \
+	fi
+	@go run ./cmd/agent --review --ticket=$(TICKET) --repo=$(REPO) --branch=$(BRANCH)
 
 # Install dependencies
 deps:
@@ -90,8 +98,12 @@ pull-repo:
 	echo "Pull completed successfully."
 
 # Set up a repository for review
-# Usage: make review REPO=username/repo-name PR-BRANCH=branch-name
+# Usage: make review REPO=username/repo-name PR-BRANCH=branch-name TICKET=WIRE-1231
 review:
+	@if [ -z "$(TICKET)" ]; then \
+		echo "Error: TICKET parameter is required. Usage: make review REPO=username/repo-name PR-BRANCH=branch-name TICKET=WIRE-1231"; \
+		exit 1; \
+	fi
 	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
 	if [ ! -d ".context/projects/$$REPO_NAME" ]; then \
 		echo "Repository $$REPO_NAME not found, cloning first...";\
@@ -104,8 +116,7 @@ review:
 	cd $(CURDIR) && \
 	$(MAKE) diff-pr REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	$(MAKE) list-changes REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
-	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'` && \
-	$(MAKE) run-review TICKET=$$TICKET
+	$(MAKE) run-review TICKET=$(TICKET) REPO=$(REPO) BRANCH=$(PR-BRANCH)
 
 # Generate a diff between master and PR branch
 # Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number

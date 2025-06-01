@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeremyhunt/agent-runner/config"
 	"github.com/jeremyhunt/agent-runner/jira"
+	"github.com/jeremyhunt/agent-runner/logger"
 )
 
 // checkJiraStatus checks if we can connect to Jira and retrieve a test ticket
@@ -29,15 +30,15 @@ func checkJiraStatus(cfg *config.Config) error {
 	}
 
 	// Print basic ticket info
-	fmt.Printf("Successfully retrieved ticket %s: %s\n", ticket.Key, ticket.Fields.Summary)
-	
-	// Print additional ticket details
-	fmt.Printf("Status: %s\n", ticket.Fields.Status.Name)
+	logger.Info("Successfully retrieved ticket %s: %s", ticket.Key, ticket.Fields.Summary)
+
+	// Print additional ticket details (only in verbose mode)
+	logger.Verbose("Status: %s", ticket.Fields.Status.Name)
 	if ticket.Fields.Assignee != nil {
-		fmt.Printf("Assignee: %s\n", ticket.Fields.Assignee.DisplayName)
+		logger.Verbose("Assignee: %s", ticket.Fields.Assignee.DisplayName)
 	}
 	if ticket.Fields.Reporter != nil {
-		fmt.Printf("Reporter: %s\n", ticket.Fields.Reporter.DisplayName)
+		logger.Verbose("Reporter: %s", ticket.Fields.Reporter.DisplayName)
 	}
 
 	return nil
@@ -45,27 +46,28 @@ func checkJiraStatus(cfg *config.Config) error {
 
 // handleStatus checks the status of various integrations
 func handleStatus() {
-	fmt.Println("Checking system status...")
+	logger.Info("Checking system status...")
 
 	// Load config
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("❌ Config: %v\n", err)
+		logger.Error("Config: %v", err)
 		os.Exit(1)
 	}
-	fmt.Println("✅ Config: Successfully loaded")
+	logger.Success("Config: Successfully loaded")
 
 	// Check OpenAI API
-	fmt.Printf("✅ OpenAI API: API key is set (%s...)\n", cfg.OpenAIAPIKey[:10]+"...")
+	logger.Success("OpenAI API: API key is set")
+	logger.Debug("API key starts with: %s", cfg.OpenAIAPIKey[:10]+"...")
 
 	// Check Jira status
-	fmt.Print("🔍 Jira API: ")
+	logger.Info("Checking Jira API...")
 	err = checkJiraStatus(cfg)
 	if err != nil {
-		fmt.Printf("❌ %v\n", err)
+		logger.Error("Jira API: %v", err)
 	} else {
-		fmt.Println("✅ Connected successfully")
+		logger.Success("Jira API: Connected successfully")
 	}
 
-	fmt.Println("\nStatus check complete.")
+	logger.Info("\nStatus check complete.")
 }

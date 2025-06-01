@@ -9,11 +9,11 @@ import (
 func TestCountText(t *testing.T) {
 	// Create a client with a dummy API key and model
 	client := NewClient("dummy-api-key", "gpt-4o")
-	
+
 	tests := []struct {
-		name     string
-		text     string
-		wantErr  bool
+		name    string
+		text    string
+		wantErr bool
 	}{
 		{
 			name:    "Empty string",
@@ -31,16 +31,16 @@ func TestCountText(t *testing.T) {
 			wantErr: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			count, err := client.CountText(tt.text)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CountText() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			// We're not testing exact token counts here since that's covered in the tokens package tests
 			// Just verify that we get a reasonable count (greater than 0 for non-empty strings)
 			if tt.text != "" && count <= 0 {
@@ -53,16 +53,16 @@ func TestCountText(t *testing.T) {
 func TestCountTokens(t *testing.T) {
 	// Create a client with a dummy API key and model
 	client := NewClient("dummy-api-key", "gpt-4o")
-	
+
 	tests := []struct {
 		name     string
 		messages []openai.ChatCompletionMessage
 		wantErr  bool
 	}{
 		{
-			name: "Empty messages",
+			name:     "Empty messages",
 			messages: []openai.ChatCompletionMessage{},
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
 			name: "Single message",
@@ -89,16 +89,16 @@ func TestCountTokens(t *testing.T) {
 			wantErr: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			count, err := client.CountTokens(tt.messages)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CountTokens() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			// For non-empty messages, we should get a positive count
 			if len(tt.messages) > 0 && count <= 0 {
 				t.Errorf("CountTokens() returned unreasonable count = %v for non-empty messages", count)
