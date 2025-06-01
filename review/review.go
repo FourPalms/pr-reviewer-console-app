@@ -678,8 +678,84 @@ func (w *Workflow) SynthesizeOriginalImplementation() error {
 
 // GenerateSyntaxReviewPrompt creates a prompt for the syntax and best practices review step
 func (w *Workflow) GenerateSyntaxReviewPrompt() string {
-	// This will be implemented in Phase 2
-	return ""
+	// Read the original synthesis file
+	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
+	synthesisContent, err := os.ReadFile(synthesisPath)
+	if err != nil {
+		logger.Debug("Warning: Could not read synthesis file: %v", err)
+		synthesisContent = []byte("No synthesis available.")
+	}
+
+	// Build the prompt using multiple strings for better maintainability
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("# PHP Syntax and Best Practices Review\n\n")
+	sb.WriteString("You are a senior PHP developer reviewing a Pull Request. ")
+	sb.WriteString("Your task is to focus EXCLUSIVELY on PHP syntax correctness and adherence to best practices. ")
+	sb.WriteString("Ignore functionality and business logic concerns for now - those will be addressed in a separate review phase.\n\n")
+
+	// Guidelines
+	sb.WriteString("## Review Guidelines\n\n")
+	sb.WriteString("1. **PHP Syntax**: Evaluate if the code follows correct PHP syntax and language rules.\n")
+	sb.WriteString("2. **Coding Standards**: Check adherence to PSR standards and common PHP best practices.\n")
+	sb.WriteString("3. **Naming Conventions**: Assess variable, function, class, and method naming.\n")
+	sb.WriteString("4. **Code Structure**: Review code organization, indentation, and formatting.\n")
+	sb.WriteString("5. **PHP Version Compatibility**: Note any syntax that might not be compatible with the project's PHP version.\n\n")
+
+	// Output Format
+	sb.WriteString("## Output Format\n\n")
+	sb.WriteString("Structure your review in GitHub-compatible markdown format with two main sections:\n\n")
+	sb.WriteString("1. **Syntax Issues** (Actual syntax errors or violations of PHP language rules)\n")
+	sb.WriteString("2. **Best Practice Suggestions** (Code that works but could be improved)\n\n")
+	sb.WriteString("For each issue, include:\n\n")
+	sb.WriteString("- File name and line number/area (if applicable)\n")
+	sb.WriteString("- Description of the issue\n")
+	sb.WriteString("- Recommended solution or approach\n")
+	sb.WriteString("- Code example using GitHub's diff format (with - for removals in red and + for additions in green)\n\n")
+
+	// Example
+	sb.WriteString("Example of proper diff format:\n\n")
+	sb.WriteString("```diff\n")
+	sb.WriteString("- if ($payCycle-\u003efundingType !== PayCycleFundingType::ACH-\u003evalue) {\n")
+	sb.WriteString("+ if (!$payCycle) {\n")
+	sb.WriteString("+     return;\n")
+	sb.WriteString("+ }\n")
+	sb.WriteString("+ \n")
+	sb.WriteString("+ if ($payCycle-\u003efundingType !== PayCycleFundingType::ACH-\u003evalue) {\n")
+	sb.WriteString("```\n\n")
+
+	// Context
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("### Original Implementation\n\n")
+	sb.WriteString(string(synthesisContent))
+	sb.WriteString("\n\n### Changes in this PR\n\n")
+	sb.WriteString(w.Ctx.DiffContent)
+
+	// Add design document if available
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("\n\n### Design Document\n\n")
+		sb.WriteString("The following design document provides context for this PR:\n\n")
+		sb.WriteString(w.Ctx.DesignDocContent)
+	}
+
+	// Add ticket details if available
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("\n\n### Jira Ticket\n\n")
+		sb.WriteString("The following Jira ticket provides context for this PR:\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+	}
+
+	// Final Instructions
+	sb.WriteString("\n\n## Final Instructions\n\n")
+	sb.WriteString("1. Focus EXCLUSIVELY on PHP syntax and best practices - ignore functionality and business logic.\n")
+	sb.WriteString("2. Be specific in your feedback and constructive in your criticism.\n")
+	sb.WriteString("3. If there are no issues in a category, explicitly state that.\n")
+	sb.WriteString("4. Format your response as clean GitHub-compatible markdown.\n")
+	sb.WriteString("5. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
+	sb.WriteString("6. Begin your response with '## PHP Syntax and Best Practices Review' as a level 2 heading.\n")
+
+	return sb.String()
 }
 
 // GenerateFunctionalityReviewPrompt creates a prompt for the functionality review step
@@ -700,106 +776,79 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 	return ""
 }
 
-// GeneratePRReviewPrompt creates a prompt for the PR review step
-// This is kept for backward compatibility but will be replaced by specialized review prompts
-func (w *Workflow) GeneratePRReviewPrompt() string {
-	// Read the original synthesis file
-	synthesisPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-original-synthesis.md", w.Ctx.Ticket))
-	synthesisContent, err := os.ReadFile(synthesisPath)
-	if err != nil {
-		logger.Debug("Warning: Could not read synthesis file: %v", err)
-		synthesisContent = []byte("No synthesis available.")
-	}
-
-	// Build the prompt using multiple strings for better maintainability
-	var sb strings.Builder
-
-	// Header
-	sb.WriteString("# PR Review Request\n\n")
-	sb.WriteString("You are a senior software engineer reviewing a Pull Request. ")
-	sb.WriteString("Your task is to provide a thorough code review focusing on syntax correctness, best practices, and potential issues. ")
-	sb.WriteString("Your review will be read by other senior developers and pasted directly into GitHub comments.\n\n")
-
-	// Guidelines
-	sb.WriteString("## Review Guidelines\n\n")
-	sb.WriteString("1. **Syntax and Best Practices**: Evaluate if the code follows language-specific syntax rules and best practices.\n")
-	sb.WriteString("2. **Defensive Programming**: Assess if the code handles edge cases, errors, and unexpected inputs appropriately.\n")
-	sb.WriteString("3. **Potential Issues**: Identify any code that could break existing functionality or introduce bugs.\n")
-	sb.WriteString("4. **Performance Concerns**: Note any code that might cause performance problems.\n")
-	sb.WriteString("5. **Security Implications**: Highlight any security vulnerabilities or concerns.\n\n")
-
-	// Output Format
-	sb.WriteString("## Output Format\n\n")
-	sb.WriteString("Structure your review in GitHub-compatible markdown format with two main sections:\n\n")
-	sb.WriteString("1. **Blockers** (Critical issues that must be fixed before merging)\n")
-	sb.WriteString("2. **Non-Blockers** (Suggestions for improvement that are not critical)\n\n")
-	sb.WriteString("For each issue, include:\n\n")
-	sb.WriteString("- File name and line number/area (if applicable)\n")
-	sb.WriteString("- Description of the issue\n")
-	sb.WriteString("- Recommended solution or approach\n")
-	sb.WriteString("- Code example using GitHub's diff format (with - for removals in red and + for additions in green)\n\n")
-
-	// Example
-	sb.WriteString("Example of proper diff format:\n\n")
-	sb.WriteString("```diff\n")
-	sb.WriteString("- if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
-	sb.WriteString("+ if (!$payCycle) {\n")
-	sb.WriteString("+     return;\n")
-	sb.WriteString("+ }\n")
-	sb.WriteString("+ \n")
-	sb.WriteString("+ if ($payCycle->fundingType !== PayCycleFundingType::ACH->value) {\n")
-	sb.WriteString("```\n\n")
-
-	// Context
-	sb.WriteString("## Context\n\n")
-	sb.WriteString("### Original Implementation\n\n")
-	sb.WriteString(string(synthesisContent))
-	sb.WriteString("\n\n### Changes in this PR\n\n")
-	sb.WriteString(w.Ctx.DiffContent)
-
-	// Add design document if available
-	if w.Ctx.DesignDocContent != "" {
-		sb.WriteString("\n\n### Design Document\n\n")
-		sb.WriteString("The following design document provides context for this PR:\n\n")
-		sb.WriteString(w.Ctx.DesignDocContent)
-		sb.WriteString("\n\nPlease evaluate whether the implementation follows the design document.")
-	}
-
-	// Add ticket details if available
-	if w.Ctx.TicketDetails != "" {
-		sb.WriteString("\n\n### Jira Ticket\n\n")
-		sb.WriteString("The following Jira ticket provides context for this PR:\n\n")
-		sb.WriteString(w.Ctx.TicketDetails)
-		sb.WriteString("\n\nPlease evaluate whether the implementation addresses the requirements in the ticket.")
-	}
-
-	// Final Instructions
-	sb.WriteString("\n\n## Final Instructions\n\n")
-	sb.WriteString("1. Write your review in a professional, respectful tone appropriate for communication between senior developers.\n")
-	sb.WriteString("2. Be specific in your feedback and constructive in your criticism.\n")
-	sb.WriteString("3. Focus on the most important issues first.\n")
-	sb.WriteString("4. If there are no issues in a category, explicitly state that.\n")
-	sb.WriteString("5. Format your response as clean GitHub-compatible markdown that can be directly pasted into a PR comment.\n")
-	sb.WriteString("6. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
-
-	// Add numbered instructions for design document and ticket
-	instructionNum := 7
-
-	if w.Ctx.DesignDocContent != "" {
-		sb.WriteString(fmt.Sprintf("%d. Compare the implementation against the design document and note any deviations.\n", instructionNum))
-		instructionNum++
-	}
-
-	if w.Ctx.TicketDetails != "" {
-		sb.WriteString(fmt.Sprintf("%d. Evaluate whether the implementation addresses all the requirements in the Jira ticket.\n", instructionNum))
-	}
-
-	return sb.String()
-}
-
 // GenerateSyntaxReview generates a review focusing on PHP syntax and best practices
 func (w *Workflow) GenerateSyntaxReview() error {
-	// This will be implemented in Phase 3
+	// 1. Generate the prompt
+	prompt := w.GenerateSyntaxReviewPrompt()
+
+	// 2. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		logger.Debug("Warning: Could not count tokens in syntax review prompt: %v", err)
+	} else {
+		logger.Verbose("Syntax review prompt contains %d tokens", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			logger.Debug("Warning: Syntax review prompt is very large (%d tokens)", tokenCount)
+		}
+	}
+
+	// 3. Send to LLM for review
+	logger.Debug("Generating syntax review...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating syntax review: %w", err)
+	}
+
+	// 4. Create or append to the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+
+	// Check if file exists
+	var content []byte
+	fileExists := false
+	if _, err := os.Stat(outputPath); err == nil {
+		// File exists, read it
+		content, err = os.ReadFile(outputPath)
+		if err != nil {
+			return fmt.Errorf("error reading existing review file: %w", err)
+		}
+		fileExists = true
+	}
+
+	// Prepare content to write
+	var sb strings.Builder
+	if !fileExists {
+		// Create new file with header
+		sb.WriteString("# PR Review Results\n\n")
+		sb.WriteString("This document contains a thorough review of the PR changes from multiple perspectives.\n\n")
+	}
+
+	// Append existing content if any
+	if fileExists {
+		sb.Write(content)
+		// Add a separator
+		sb.WriteString("\n\n---\n\n")
+	}
+
+	// Add the syntax review section
+	sb.WriteString(response)
+
+	// 5. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err = w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil && !fileExists {
+		// Only add token count info if this is a new file
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis review contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+
+	// 6. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write syntax review: %w", err)
+	}
+
+	logger.Debug("Syntax review saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
@@ -818,56 +867,6 @@ func (w *Workflow) GenerateDefensiveReview() error {
 // GenerateFinalSummary generates a human-friendly summary of all reviews
 func (w *Workflow) GenerateFinalSummary() error {
 	// This will be implemented in Phase 3
-	return nil
-}
-
-// GeneratePRReview generates a comprehensive PR review
-// This is kept for backward compatibility but will be replaced by specialized review functions
-func (w *Workflow) GeneratePRReview() error {
-	// 1. Generate the prompt
-	prompt := w.GeneratePRReviewPrompt()
-
-	// 2. Count tokens in the prompt
-	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
-	if err != nil {
-		logger.Debug("Warning: Could not count tokens in review prompt: %v", err)
-	} else {
-		logger.Verbose("PR review prompt contains %d tokens", tokenCount)
-		if tokenCount > w.Ctx.MaxTokens/2 {
-			logger.Debug("Warning: PR review prompt is very large (%d tokens)", tokenCount)
-		}
-	}
-
-	// 3. Send to LLM for review
-	logger.Debug("Generating PR review...")
-	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
-	if err != nil {
-		return fmt.Errorf("error generating PR review: %w", err)
-	}
-
-	// 4. Create the output file
-	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
-	var sb strings.Builder
-	sb.WriteString("# PR Review Results\n\n")
-	sb.WriteString("This document contains a thorough review of the PR changes, focusing on syntax correctness, best practices, and potential issues.\n\n")
-	sb.WriteString(response)
-
-	// 5. Count tokens in the result
-	outputContent := sb.String()
-	tokenCount, err = w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
-	if err == nil {
-		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis review contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
-		outputContent = sb.String()
-	}
-
-	// 6. Write the result to a file
-	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write PR review: %w", err)
-	}
-
-	logger.Debug("PR review saved")
-	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 

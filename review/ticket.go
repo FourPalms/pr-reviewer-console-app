@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeremyhunt/agent-runner/config"
 	"github.com/jeremyhunt/agent-runner/jira"
+	"github.com/jeremyhunt/agent-runner/logger"
 )
 
 // LoadTicketDetails fetches and formats the Jira ticket information
@@ -31,14 +32,14 @@ func (w *Workflow) LoadTicketDetails() error {
 	}
 
 	// Get the ticket
-	fmt.Printf("Fetching Jira ticket %s...\n", w.Ctx.Ticket)
+	// We don't need to log here since we're already logging in the Run method
 	ticket, err := client.GetTicket(w.Ctx.Ticket)
 	if err != nil {
 		return fmt.Errorf("failed to get ticket %s: %w", w.Ctx.Ticket, err)
 	}
 
 	// Format the ticket as markdown using our existing LLM client
-	fmt.Println("Formatting ticket as markdown...")
+	logger.Verbose("Formatting ticket as markdown...")
 
 	// Create a prompt for the LLM to format the ticket
 	prompt := fmt.Sprintf(`You are a technical documentation expert tasked with formatting a Jira ticket for use in a code review context.
@@ -67,9 +68,9 @@ Format this as markdown, with appropriate sections and highlighting of key infor
 	// Count tokens in the prompt
 	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
 	if err != nil {
-		fmt.Printf("Warning: Could not count tokens in ticket prompt: %v\n", err)
+		logger.Debug("Warning: Could not count tokens in ticket prompt: %v", err)
 	} else {
-		fmt.Printf("Ticket formatting prompt contains %d tokens\n", tokenCount)
+		logger.Verbose("Ticket formatting prompt contains %d tokens", tokenCount)
 		if tokenCount > w.Ctx.MaxTokens/2 {
 			return fmt.Errorf("ticket formatting prompt is too large (%d tokens, max is %d)", tokenCount, w.Ctx.MaxTokens/2)
 		}

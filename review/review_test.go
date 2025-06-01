@@ -64,27 +64,27 @@ func TestLoadDesignDocument(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name           string
-		designDocPath  string
-		expectedError  bool
+		name            string
+		designDocPath   string
+		expectedError   bool
 		expectedContent string
 	}{
 		{
-			name: "Existing design document",
-			designDocPath: testDocName,
-			expectedError: false,
+			name:            "Existing design document",
+			designDocPath:   testDocName,
+			expectedError:   false,
 			expectedContent: testContent,
 		},
 		{
-			name: "Non-existent design document",
-			designDocPath: "non-existent.md",
-			expectedError: false, // Should not error, just log warning
+			name:            "Non-existent design document",
+			designDocPath:   "non-existent.md",
+			expectedError:   false, // Should not error, just log warning
 			expectedContent: "",
 		},
 		{
-			name: "Empty design document path",
-			designDocPath: "",
-			expectedError: false,
+			name:            "Empty design document path",
+			designDocPath:   "",
+			expectedError:   false,
 			expectedContent: "",
 		},
 	}
@@ -135,7 +135,7 @@ func TestLoadDesignDocument(t *testing.T) {
 	}
 }
 
-func TestGeneratePRReviewPrompt(t *testing.T) {
+func TestGenerateSyntaxReviewPrompt(t *testing.T) {
 	// Skip test if we're just checking compilation
 	if testing.Short() {
 		t.Skip("Skipping test in short mode")
@@ -193,11 +193,11 @@ func TestGeneratePRReviewPrompt(t *testing.T) {
 			workflow := NewWorkflow(ctx)
 
 			// Get the prompt
-			prompt := workflow.GeneratePRReviewPrompt()
+			prompt := workflow.GenerateSyntaxReviewPrompt()
 
 			// Check that the prompt contains our test content
 			if prompt == "" {
-				t.Error("GeneratePRReviewPrompt() returned an empty string")
+				t.Error("GenerateSyntaxReviewPrompt() returned an empty string")
 			}
 
 			// Check that the prompt contains our test content
@@ -218,13 +218,11 @@ func TestGeneratePRReviewPrompt(t *testing.T) {
 				t.Error("Prompt contains design document section when it should not")
 			}
 
-			// Check for design document comparison instruction
-			hasComparison := strings.Contains(prompt, "Compare the implementation against the design document")
-			if tc.expectComparison && !hasComparison {
-				t.Error("Prompt does not contain design document comparison instruction when it should")
-			}
-			if !tc.expectComparison && hasComparison {
-				t.Error("Prompt contains design document comparison instruction when it should not")
+			// Our new syntax review prompt doesn't have comparison instructions
+			// Instead, check for PHP-specific syntax review content
+			hasPHPSyntax := strings.Contains(prompt, "PHP Syntax and Best Practices Review")
+			if !hasPHPSyntax {
+				t.Error("Prompt does not contain PHP syntax review heading")
 			}
 
 			// If we expect design document content, check that it's actually there
