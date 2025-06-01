@@ -218,11 +218,10 @@ func TestGenerateSyntaxReviewPrompt(t *testing.T) {
 				t.Error("Prompt contains design document section when it should not")
 			}
 
-			// Our new syntax review prompt doesn't have comparison instructions
-			// Instead, check for PHP-specific syntax review content
-			hasPHPSyntax := strings.Contains(prompt, "PHP Syntax and Best Practices Review")
-			if !hasPHPSyntax {
-				t.Error("Prompt does not contain PHP syntax review heading")
+			// Check for the new syntax review heading format
+			hasSyntaxReview := strings.Contains(prompt, "Code Review: Syntax and Best Practices")
+			if !hasSyntaxReview {
+				t.Error("Prompt does not contain syntax review heading")
 			}
 
 			// If we expect design document content, check that it's actually there

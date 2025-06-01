@@ -686,81 +686,101 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 		synthesisContent = []byte("No synthesis available.")
 	}
 
-	// Build the prompt using multiple strings for better maintainability
+	// Build the prompt using a string builder for better maintainability
 	var sb strings.Builder
 
-	// Header
-	sb.WriteString("# PHP Syntax and Best Practices Review\n\n")
-	sb.WriteString("You are a senior PHP developer reviewing a Pull Request. ")
-	sb.WriteString("Your task is to focus EXCLUSIVELY on PHP syntax correctness and adherence to best practices. ")
-	sb.WriteString("Ignore functionality and business logic concerns for now - those will be addressed in a separate review phase.\n\n")
+	// Overview section - common across all review types
+	sb.WriteString("# Code Review: Syntax and Best Practices\n\n")
+	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
+	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString("Your goal is to identify syntax issues and best practice violations that could cause the team problems. ")
+	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
 
-	// Guidelines
-	sb.WriteString("## Review Guidelines\n\n")
-	sb.WriteString("1. **PHP Syntax**: Evaluate if the code follows correct PHP syntax and language rules.\n")
-	sb.WriteString("2. **Coding Standards**: Check adherence to PSR standards and common PHP best practices.\n")
-	sb.WriteString("3. **Naming Conventions**: Assess variable, function, class, and method naming.\n")
-	sb.WriteString("4. **Code Structure**: Review code organization, indentation, and formatting.\n")
-	sb.WriteString("5. **PHP Version Compatibility**: Note any syntax that might not be compatible with the project's PHP version.\n\n")
+	// Review focus section
+	sb.WriteString("## Review Focus\n\n")
+	sb.WriteString("For this syntax review, focus on:\n\n")
+	sb.WriteString("1. **Syntax Issues**: Identify errors that would cause runtime failures, typos in names, missing syntax elements, and namespace issues.\n\n")
+	sb.WriteString("2. **Logic and Variable Usage**: Examine parameter usage, type handling, null/undefined access, conditional logic, and error handling patterns.\n\n")
+	sb.WriteString("3. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
 
-	// Output Format
-	sb.WriteString("## Output Format\n\n")
-	sb.WriteString("Structure your review in GitHub-compatible markdown format with two main sections:\n\n")
-	sb.WriteString("1. **Syntax Issues** (Actual syntax errors or violations of PHP language rules)\n")
-	sb.WriteString("2. **Best Practice Suggestions** (Code that works but could be improved)\n\n")
-	sb.WriteString("For each issue, include:\n\n")
-	sb.WriteString("- File name and line number/area (if applicable)\n")
-	sb.WriteString("- Description of the issue\n")
-	sb.WriteString("- Recommended solution or approach\n")
-	sb.WriteString("- Code example using GitHub's diff format (with - for removals in red and + for additions in green)\n\n")
+	// Machine consumption format section
+	sb.WriteString("## Machine Consumption Format\n\n")
+	sb.WriteString("IMPORTANT: Your output will be processed by another LLM to create a consolidated review, not read directly by humans.\n\n")
+	sb.WriteString("Use these consistent tags and format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<SYNTAX_REVIEW>\n")
+	sb.WriteString("  <REVIEW_SUMMARY>\n")
+	sb.WriteString("  Brief assessment of findings and limitations\n")
+	sb.WriteString("  </REVIEW_SUMMARY>\n\n")
 
-	// Example
-	sb.WriteString("Example of proper diff format:\n\n")
-	sb.WriteString("```diff\n")
-	sb.WriteString("- if ($payCycle-\u003efundingType !== PayCycleFundingType::ACH-\u003evalue) {\n")
-	sb.WriteString("+ if (!$payCycle) {\n")
-	sb.WriteString("+     return;\n")
-	sb.WriteString("+ }\n")
-	sb.WriteString("+ \n")
-	sb.WriteString("+ if ($payCycle-\u003efundingType !== PayCycleFundingType::ACH-\u003evalue) {\n")
+	sb.WriteString("  <CRITICAL_ISSUES>\n")
+	sb.WriteString("  [List syntax errors that would cause runtime failures]\n")
+	sb.WriteString("  </CRITICAL_ISSUES>\n\n")
+
+	sb.WriteString("  <LOGIC_ISSUES>\n")
+	sb.WriteString("  [List problems with variable/parameter usage and logic]\n")
+	sb.WriteString("  </LOGIC_ISSUES>\n\n")
+
+	sb.WriteString("  <IMPROVEMENT_SUGGESTIONS>\n")
+	sb.WriteString("  [List best practice violations]\n")
+	sb.WriteString("  </IMPROVEMENT_SUGGESTIONS>\n\n")
+
+	sb.WriteString("  <REVIEW_LIMITATIONS>\n")
+	sb.WriteString("  [State what additional context would help]\n")
+	sb.WriteString("  </REVIEW_LIMITATIONS>\n")
+	sb.WriteString("</SYNTAX_REVIEW>\n")
 	sb.WriteString("```\n\n")
 
-	// Context
+	sb.WriteString("For each issue, use this format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("LINE: 42\n")
+	sb.WriteString("SEVERITY: [Critical|Major|Minor]\n")
+	sb.WriteString("PROBLEM: Brief description\n")
+	sb.WriteString("SOLUTION_CODE:\n")
+	sb.WriteString("```php\n")
+	sb.WriteString("// Original\n")
+	sb.WriteString("$original = $code->here();\n\n")
+	sb.WriteString("// Fixed\n")
+	sb.WriteString("$fixed = $code->here();\n")
+	sb.WriteString("```\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("```\n\n")
+
+	sb.WriteString("If no issues found in a category: `<NO_ISSUES_FOUND/>`\n\n")
+	sb.WriteString("Focus exclusively on syntax and logic - ignore broader functionality concerns.\n\n")
+
+	// Context section
 	sb.WriteString("## Context\n\n")
+	sb.WriteString("The following context is provided for your review:\n\n")
+
+	// Original implementation
 	sb.WriteString("### Original Implementation\n\n")
 	sb.WriteString(string(synthesisContent))
+
+	// PR changes
 	sb.WriteString("\n\n### Changes in this PR\n\n")
 	sb.WriteString(w.Ctx.DiffContent)
 
 	// Add design document if available
 	if w.Ctx.DesignDocContent != "" {
 		sb.WriteString("\n\n### Design Document\n\n")
-		sb.WriteString("The following design document provides context for this PR:\n\n")
 		sb.WriteString(w.Ctx.DesignDocContent)
 	}
 
 	// Add ticket details if available
 	if w.Ctx.TicketDetails != "" {
 		sb.WriteString("\n\n### Jira Ticket\n\n")
-		sb.WriteString("The following Jira ticket provides context for this PR:\n\n")
 		sb.WriteString(w.Ctx.TicketDetails)
 	}
-
-	// Final Instructions
-	sb.WriteString("\n\n## Final Instructions\n\n")
-	sb.WriteString("1. Focus EXCLUSIVELY on PHP syntax and best practices - ignore functionality and business logic.\n")
-	sb.WriteString("2. Be specific in your feedback and constructive in your criticism.\n")
-	sb.WriteString("3. If there are no issues in a category, explicitly state that.\n")
-	sb.WriteString("4. Format your response as clean GitHub-compatible markdown.\n")
-	sb.WriteString("5. Ensure all code suggestions use the diff format with - for removals and + for additions.\n")
-	sb.WriteString("6. Begin your response with '## PHP Syntax and Best Practices Review' as a level 2 heading.\n")
 
 	return sb.String()
 }
 
 // GenerateFunctionalityReviewPrompt creates a prompt for the functionality review step
 func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
-	// This will be implemented in Phase 2
+	// Empty implementation for now - will be collaboratively designed
 	return ""
 }
 
