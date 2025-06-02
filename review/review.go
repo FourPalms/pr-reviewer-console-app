@@ -860,8 +860,107 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 
 // GenerateDefensiveReviewPrompt creates a prompt for the defensive programming review step
 func (w *Workflow) GenerateDefensiveReviewPrompt() string {
-	// This will be implemented in Phase 2
-	return ""
+	// Use the synthesis content stored in the context
+	synthesisContent := "No synthesis available."
+	if w.Ctx.SynthesisContent != "" {
+		synthesisContent = w.Ctx.SynthesisContent
+	}
+
+	// Build the prompt using a string builder for better maintainability
+	var sb strings.Builder
+
+	// Overview section - common across all review types
+	sb.WriteString("# Code Review: Defensive Programming\n\n")
+	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
+	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString("Your goal is to identify security issues, error handling gaps, and edge cases that could cause production problems. ")
+	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
+
+	// Review focus section
+	sb.WriteString("## Review Focus\n\n")
+	sb.WriteString("For this defensive programming review, focus on:\n\n")
+	sb.WriteString("1. Based on what we know of the original functionality (see context below), could this new functionality break anything?\n\n")
+	sb.WriteString("2. Deep dive into funcs - check to see whether the vars being passed in are actually what the func content expects\n\n")
+	sb.WriteString("3. Look specifically for areas that could expose uncaught errors/exceptions that would break or interrupt calling code\n\n")
+	sb.WriteString("4. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
+
+	// Machine consumption format section
+	sb.WriteString("## Machine Consumption Format\n\n")
+	sb.WriteString("IMPORTANT: Your output will be processed by another LLM to create a consolidated review, not read directly by humans.\n\n")
+	sb.WriteString("Use these consistent tags and format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<DEFENSIVE_REVIEW>\n")
+	sb.WriteString("  <REVIEW_SUMMARY>\n")
+	sb.WriteString("  Brief assessment of findings and limitations\n")
+	sb.WriteString("  </REVIEW_SUMMARY>\n\n")
+
+	sb.WriteString("  <ERROR_HANDLING_ISSUES>\n")
+	sb.WriteString("  [List missing or inadequate error handling]\n")
+	sb.WriteString("  </ERROR_HANDLING_ISSUES>\n\n")
+
+	sb.WriteString("  <EDGE_CASE_ISSUES>\n")
+	sb.WriteString("  [List unhandled edge cases]\n")
+	sb.WriteString("  </EDGE_CASE_ISSUES>\n\n")
+
+	sb.WriteString("  <SECURITY_ISSUES>\n")
+	sb.WriteString("  [List potential security concerns]\n")
+	sb.WriteString("  </SECURITY_ISSUES>\n\n")
+
+	sb.WriteString("  <RESOURCE_ISSUES>\n")
+	sb.WriteString("  [List resource management issues]\n")
+	sb.WriteString("  </RESOURCE_ISSUES>\n\n")
+
+	sb.WriteString("  <REVIEW_LIMITATIONS>\n")
+	sb.WriteString("  [State what additional context would help]\n")
+	sb.WriteString("  </REVIEW_LIMITATIONS>\n")
+	sb.WriteString("</DEFENSIVE_REVIEW>\n")
+	sb.WriteString("```\n\n")
+
+	sb.WriteString("For each issue, use this format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("LINE: 42\n")
+	sb.WriteString("SEVERITY: [Critical|Major|Minor]\n")
+	sb.WriteString("PROBLEM: Brief description\n")
+	sb.WriteString("SOLUTION_CODE:\n")
+	sb.WriteString("```php\n")
+	sb.WriteString("// Original\n")
+	sb.WriteString("$original = $code->here();\n\n")
+	sb.WriteString("// Fixed\n")
+	sb.WriteString("$fixed = $code->here();\n")
+	sb.WriteString("```\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("```\n\n")
+
+	sb.WriteString("If no issues found in a category: `<NO_ISSUES_FOUND/>`\n\n")
+	sb.WriteString("Focus exclusively on defensive programming concerns - ignore syntax and functionality issues already covered in other reviews.\n\n")
+
+	// Context section
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("The following context is provided for your review:\n\n")
+
+	// Original implementation
+	sb.WriteString("### Original Implementation\n\n")
+	sb.WriteString(synthesisContent)
+
+	// PR changes
+	sb.WriteString("\n\n### Changes in this PR\n\n")
+	sb.WriteString(w.Ctx.DiffContent)
+
+	// Add design document if available
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("\n\n### Design Document\n\n")
+		sb.WriteString(w.Ctx.DesignDocContent)
+	}
+
+	// Add ticket details if available
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("\n\n### Jira Ticket\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+	}
+
+	return sb.String()
 }
 
 // GenerateFinalSummaryPrompt creates a prompt for the final summary step
@@ -1024,7 +1123,77 @@ func (w *Workflow) GenerateFunctionalityReview() error {
 
 // GenerateDefensiveReview generates a review focusing on defensive programming
 func (w *Workflow) GenerateDefensiveReview() error {
-	// This will be implemented in Phase 3
+	// 1. Generate the prompt
+	prompt := w.GenerateDefensiveReviewPrompt()
+
+	// 2. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		logger.Debug("Warning: Could not count tokens in defensive review prompt: %v", err)
+	} else {
+		logger.Verbose("Defensive review prompt contains %d tokens", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			logger.Debug("Warning: Defensive review prompt is very large (%d tokens)", tokenCount)
+		}
+	}
+
+	// 3. Send to LLM for review
+	logger.Debug("Generating defensive programming review...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating defensive programming review: %w", err)
+	}
+
+	// 4. Create or append to the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+
+	// Check if file exists
+	var content []byte
+	fileExists := false
+	if _, err := os.Stat(outputPath); err == nil {
+		// File exists, read it
+		content, err = os.ReadFile(outputPath)
+		if err != nil {
+			return fmt.Errorf("error reading existing review file: %w", err)
+		}
+		fileExists = true
+	}
+
+	// Prepare content to write
+	var sb strings.Builder
+	if !fileExists {
+		// Create new file with header
+		sb.WriteString("# PR Review Results\n\n")
+		sb.WriteString("This document contains a thorough review of the PR changes from multiple perspectives.\n\n")
+	}
+
+	// Append existing content if any
+	if fileExists {
+		sb.Write(content)
+		// Add a separator
+		sb.WriteString("\n\n---\n\n")
+	}
+
+	// Add the defensive review section
+	sb.WriteString(response)
+
+	// 5. Count tokens in the result
+	outputContent := sb.String()
+	tokenCount, err = w.Ctx.TokenCounter.CountText(outputContent, w.Ctx.Model)
+	if err == nil && !fileExists {
+		// Only add token count info if this is a new file
+		sb.WriteString(fmt.Sprintf("\n\n---\n\nThis review contains **%d tokens** when processed by %s.\n", tokenCount, w.Ctx.Model))
+		outputContent = sb.String()
+	}
+
+	// 6. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(outputContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write defensive programming review: %w", err)
+	}
+
+	logger.Debug("Defensive programming review saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
