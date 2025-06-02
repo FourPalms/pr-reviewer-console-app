@@ -59,7 +59,7 @@ agent-runner/
    ```
 5. Run your first PR review:
    ```
-   make review TICKET=TICKET-NUMBER REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+   make review TICKET=TICKET-NUMBER REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
    ```
 
 ## Usage
@@ -71,13 +71,13 @@ The agent-runner is designed to analyze pull requests and provide detailed code 
 #### Using the Go command directly:
 
 ```
-go run ./cmd/agent --review --ticket=TICKET-NUMBER --repo=BambooHR/repo-name [--branch=username/TICKET-NUMBER]
+go run ./cmd/agent --review --ticket=TICKET-NUMBER --repo=Company/repo-name [--branch=username/TICKET-NUMBER]
 ```
 
 #### Using the Makefile (recommended):
 
 ```
-make review TICKET=TICKET-NUMBER REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+make review TICKET=TICKET-NUMBER REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
 ```
 
 ### Status Check
@@ -131,22 +131,22 @@ The project includes a Makefile with several useful targets, primarily focused o
 
 ```
 make review       # Main command: Set up repo and run full PR review
-                  # Usage: make review TICKET=TICKET-NUMBER REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+                  # Usage: make review TICKET=TICKET-NUMBER REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
 
 make run-review   # Run review on an already prepared repository
-                  # Usage: make run-review TICKET=TICKET-NUMBER REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+                  # Usage: make run-review TICKET=TICKET-NUMBER REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
 
 make clone-repo   # Clone a GitHub repository for review
-                  # Usage: make clone-repo REPO=BambooHR/repo-name
+                  # Usage: make clone-repo REPO=Company/repo-name
 
 make pull-repo    # Pull latest changes from main/master branch
-                  # Usage: make pull-repo REPO=BambooHR/repo-name
+                  # Usage: make pull-repo REPO=Company/repo-name
 
 make diff-pr      # Generate a diff between master and PR branch
-                  # Usage: make diff-pr REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+                  # Usage: make diff-pr REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
 
 make list-changes # List changed files in a PR
-                  # Usage: make list-changes REPO=BambooHR/repo-name BRANCH=username/TICKET-NUMBER
+                  # Usage: make list-changes REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
 
 make status       # Check configuration and connectivity
 ```
