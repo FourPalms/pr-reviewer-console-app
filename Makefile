@@ -111,12 +111,12 @@ review:
 	fi; \
 	cd .context/projects/$$REPO_NAME && git checkout master && git pull --depth 1 && \
 	echo "Setting up PR branch $(PR-BRANCH)..." && \
-	git fetch origin $(PR-BRANCH) --depth 100 && git checkout $(PR-BRANCH) && \
+	git fetch origin $(PR-BRANCH) --depth 100 && git checkout FETCH_HEAD -B review-$(TICKET) && \
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
 	cd $(CURDIR) && \
 	$(MAKE) diff-pr REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	$(MAKE) list-changes REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
-	$(MAKE) run-review TICKET=$(TICKET) REPO=$(REPO) BRANCH=$(PR-BRANCH)
+	$(MAKE) run-review TICKET=$(TICKET) REPO=$(REPO) BRANCH=review-$(TICKET)
 
 # Generate a diff between master and PR branch
 # Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number
@@ -130,18 +130,17 @@ diff-pr:
 		exit 1; \
 	fi
 	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
-	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'`; \
-	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $$TICKET)..."; \
+	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $(TICKET))..."; \
 	mkdir -p .context/reviews; \
 	cd .context/projects/$$REPO_NAME && \
 	echo "Fetching branches with more history..." && \
 	git fetch origin master --depth 100 && \
 	git fetch origin $(PR-BRANCH) --depth 100 && \
-	echo "Finding common ancestor between master and $(PR-BRANCH)..." && \
-	MERGE_BASE=$$(git merge-base master $(PR-BRANCH)) && \
-	echo "Generating diff from common ancestor to $(PR-BRANCH)..." && \
-	git diff $$MERGE_BASE..$(PR-BRANCH) > ../../../.context/reviews/$$TICKET-diff.md && \
-	echo "Diff generated at .context/reviews/$$TICKET-diff.md"
+	echo "Finding common ancestor between master and review-$(TICKET)..." && \
+	MERGE_BASE=$$(git merge-base master review-$(TICKET)) && \
+	echo "Generating diff from common ancestor to PR branch..." && \
+	git diff $$MERGE_BASE..review-$(TICKET) > ../../../.context/reviews/$(TICKET)-diff.md && \
+	echo "Diff generated at .context/reviews/$(TICKET)-diff.md"
 
 # Check status of integrations
 # Usage: make status
@@ -160,31 +159,30 @@ list-changes:
 		exit 1; \
 	fi
 	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
-	TICKET=`echo $(PR-BRANCH) | sed 's/.*\///'`; \
-	echo "Listing changed files for PR branch $(PR-BRANCH) (Ticket: $$TICKET)..."; \
+	echo "Listing changed files for PR branch $(PR-BRANCH) (Ticket: $(TICKET))..."; \
 	mkdir -p $(CURDIR)/.context/reviews; \
 	cd .context/projects/$$REPO_NAME && \
-	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
+	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	echo "Fetching branches with more history..." && \
 	git fetch origin master --depth 100 && \
 	git fetch origin $(PR-BRANCH) --depth 100 && \
-	echo "Finding common ancestor between master and $(PR-BRANCH)..." && \
-	MERGE_BASE=$$(git merge-base master $(PR-BRANCH)) && \
-	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Added Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --name-status $$MERGE_BASE..$(PR-BRANCH) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "## Stats" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	git diff --stat $$MERGE_BASE..$(PR-BRANCH) >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$$TICKET-files.md && \
-	echo "File list generated at .context/reviews/$$TICKET-files.md"
+	echo "Finding common ancestor between master and review-$(TICKET)..." && \
+	MERGE_BASE=$$(git merge-base master review-$(TICKET)) && \
+	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	git diff --name-status $$MERGE_BASE..review-$(TICKET) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "## Added Files" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	git diff --name-status $$MERGE_BASE..review-$(TICKET) | grep "^A" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "## Deleted Files" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	git diff --name-status $$MERGE_BASE..review-$(TICKET) | grep "^D" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "## File Statistics" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	git diff --numstat $$MERGE_BASE..review-$(TICKET) | sort -nr >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	git diff --stat $$MERGE_BASE..review-$(TICKET) >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
+	echo "File list generated at .context/reviews/$(TICKET)-files.md"
 
 # Help target
 help:
