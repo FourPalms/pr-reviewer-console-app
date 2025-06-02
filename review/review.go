@@ -361,34 +361,46 @@ func (w *Workflow) CollectOriginalFileContents() error {
 	return nil
 }
 
-// ParseRecommendedFileOrder extracts the recommended file analysis order from the initial discovery
+// ParseRecommendedFileOrder gets the list of files to analyze
+// It uses the actual list of changed files from the PR, not LLM recommendations
 func (w *Workflow) ParseRecommendedFileOrder() ([]string, error) {
-	// Read the initial discovery file
-	initialDiscoveryPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-initial-discovery.md", w.Ctx.Ticket))
-	content, err := os.ReadFile(initialDiscoveryPath)
+	// Get the complete list of changed files from the PR
+	changedFiles, err := w.ParseChangedFiles()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read initial discovery: %w", err)
+		return nil, fmt.Errorf("failed to parse changed files: %w", err)
 	}
 
-	// Convert to string for easier processing
-	contentStr := string(content)
+	// Log the number of files found
+	logger.Debug("Found %d changed files in the PR", len(changedFiles))
 
-	// Find the recommended file order section using the exact heading we specified
-	orderSectionPattern := "(?s)## 3. Recommended File Order.*?(?:\\n##|$)"
-	orderSectionRegex := regexp.MustCompile(orderSectionPattern)
-	orderSection := orderSectionRegex.FindString(contentStr)
-	if orderSection == "" {
-		return nil, fmt.Errorf("could not find recommended file order section in initial discovery")
+	// Return the complete list of changed files
+	return changedFiles, nil
+}
+
+// ParseChangedFiles extracts the list of all changed files from the PR
+func (w *Workflow) ParseChangedFiles() ([]string, error) {
+	// Extract all changed files from the files content
+	// The files content is in the format:
+	// # Changed Files for tharris/check-bank-for-paygroup
+	//
+	// ## Modified Files
+	// app/PayrollServices/Silo/Client/Domain/PayCycleDomain.php
+	// ...
+
+	// Read the files content
+	filesContent := w.Ctx.FilesContent
+	if filesContent == "" {
+		return nil, fmt.Errorf("files content is empty")
 	}
 
-	// Extract filenames using regex
-	// Looking for patterns like: `app/PayrollServices/Silo/Client/Domain/PayCycleDomain.php`
-	filePattern := "`([^`]+\\.php)`"
+	// Find all file paths in the content
+	// Looking for lines that start with a file path
+	filePattern := "(?m)^([a-zA-Z0-9_\\-./]+\\.[a-zA-Z0-9]+)$"
 	fileRegex := regexp.MustCompile(filePattern)
-	matches := fileRegex.FindAllStringSubmatch(orderSection, -1)
+	matches := fileRegex.FindAllStringSubmatch(filesContent, -1)
 
 	if len(matches) == 0 {
-		return nil, fmt.Errorf("could not find any filenames in recommended order section")
+		return nil, fmt.Errorf("could not find any filenames in files content")
 	}
 
 	// Extract the filenames from the regex matches
@@ -740,6 +752,7 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 	sb.WriteString("LINE: 42\n")
 	sb.WriteString("SEVERITY: [Critical|Major|Minor]\n")
 	sb.WriteString("PROBLEM: Brief description\n")
+	sb.WriteString("... several lines of prior context with line numbers...\n")
 	sb.WriteString("SOLUTION_CODE:\n")
 	sb.WriteString("```php\n")
 	sb.WriteString("// Original\n")
@@ -747,6 +760,7 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 	sb.WriteString("// Fixed\n")
 	sb.WriteString("$fixed = $code->here();\n")
 	sb.WriteString("```\n")
+	sb.WriteString("... more lines of prior context with line numbers if available...\n")
 	sb.WriteString("</ISSUE>\n")
 	sb.WriteString("```\n\n")
 
@@ -828,6 +842,25 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 	sb.WriteString("</FUNCTIONALITY_REVIEW>\n")
 	sb.WriteString("```\n\n")
 
+	sb.WriteString("For each issue, use this format:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("LINE: 42\n")
+	sb.WriteString("SEVERITY: [Critical|Major|Minor]\n")
+	sb.WriteString("PROBLEM: Brief description\n")
+	sb.WriteString("... several lines of prior context with line numbers...\n")
+	sb.WriteString("SOLUTION_CODE:\n")
+	sb.WriteString("```php\n")
+	sb.WriteString("// Original\n")
+	sb.WriteString("$original = $code->here();\n\n")
+	sb.WriteString("// Fixed\n")
+	sb.WriteString("$fixed = $code->here();\n")
+	sb.WriteString("```\n")
+	sb.WriteString("... more lines of prior context with line numbers if available...\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("```\n\n")
+
 	sb.WriteString("If no issues found in a category: `<NO_ISSUES_FOUND/>`\n\n")
 	sb.WriteString("Focus exclusively on functionality implementation per ticket/design doc - ignore broader syntax and logic concerns.\n\n")
 
@@ -878,11 +911,17 @@ func (w *Workflow) GenerateDefensiveReviewPrompt() string {
 
 	// Review focus section
 	sb.WriteString("## Review Focus\n\n")
+	sb.WriteString("CRITICAL: First thoroughly understand the existing code logic and its purpose before suggesting any changes.\n\n")
 	sb.WriteString("For this defensive programming review, focus on:\n\n")
-	sb.WriteString("1. Based on what we know of the original functionality (see context below), could this new functionality break anything?\n\n")
-	sb.WriteString("2. Deep dive into funcs - check to see whether the vars being passed in are actually what the func content expects\n\n")
-	sb.WriteString("3. Look specifically for areas that could expose uncaught errors/exceptions that would break or interrupt calling code\n\n")
-	sb.WriteString("4. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
+	sb.WriteString("1. **Understand before suggesting**: ALWAYS make sure you fully understand what the existing code is trying to accomplish before suggesting changes. This is especially important for conditional logic.\n\n")
+	sb.WriteString("2. **Preserve functionality**: Never suggest changes that would remove intended functionality or edge case handling. If the original code handles a specific case, your suggestion must also handle it.\n\n")
+	sb.WriteString("3. **Provide context**: For every suggestion, include the function/method signature and several lines of context before and after the change to help developers locate the code.\n\n")
+	sb.WriteString("4. **Based on what we know of the original functionality (see context below), could this new functionality break anything?\n\n")
+	sb.WriteString("5. **Deep dive into funcs**: Check to see whether the vars being passed in are actually what the func content expects\n\n")
+	sb.WriteString("6. **Look for uncaught errors**: Identify areas that could expose uncaught errors/exceptions that would break or interrupt calling code\n\n")
+	sb.WriteString("7. **Carefully analyze edge cases**: Consider edge cases within the context of what the code is trying to accomplish. Only suggest changes if they actually improve handling of edge cases.\n\n")
+	sb.WriteString("8. **Pay close attention to conditional logic**: When suggesting changes to if/else statements or other conditionals, ensure you fully understand the business logic and don't remove intended functionality.\n\n")
+	sb.WriteString("9. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
 
 	// Machine consumption format section
 	sb.WriteString("## Machine Consumption Format\n\n")
@@ -923,6 +962,7 @@ func (w *Workflow) GenerateDefensiveReviewPrompt() string {
 	sb.WriteString("LINE: 42\n")
 	sb.WriteString("SEVERITY: [Critical|Major|Minor]\n")
 	sb.WriteString("PROBLEM: Brief description\n")
+	sb.WriteString("... several lines of prior context with line numbers...\n")
 	sb.WriteString("SOLUTION_CODE:\n")
 	sb.WriteString("```php\n")
 	sb.WriteString("// Original\n")
@@ -930,6 +970,7 @@ func (w *Workflow) GenerateDefensiveReviewPrompt() string {
 	sb.WriteString("// Fixed\n")
 	sb.WriteString("$fixed = $code->here();\n")
 	sb.WriteString("```\n")
+	sb.WriteString("... more lines of prior context with line numbers if available...\n")
 	sb.WriteString("</ISSUE>\n")
 	sb.WriteString("```\n\n")
 
@@ -1002,25 +1043,75 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 	sb.WriteString("Structure your summary with these sections:\n\n")
 	sb.WriteString("1. **Overview**: A brief assessment of the PR quality and purpose (2-3 sentences).\n\n")
 	sb.WriteString("2. **Positive Aspects**: Highlight what was done well (if applicable).\n\n")
-	sb.WriteString("3. **Blocker Issues**: List the blocker issues that would prevent release.\n\n")
-	sb.WriteString("4. **Non-Blocker Issues**: List the non-blocker issues that are still important to address.\n\n")
-	sb.WriteString("5. FOR EACH issue, include the following:\n\n")
+	sb.WriteString("3. **Blocker Issues**: List the blocker issues that would prevent release. Format as follows:\n\n")
+	sb.WriteString("   ### 1. [Issue Title]\n")
+	sb.WriteString("   **Issue**: [Clear description of the problem]\n\n")
+	sb.WriteString("   **WHY**: [Explanation of why this is important]\n\n")
+	sb.WriteString("   **Suggested Fix**:\n")
+	sb.WriteString("   ```diff\n")
+	sb.WriteString("   // Show function/class signature and at least 3-5 lines of context before the change\n")
+	sb.WriteString("   public function processPayment($clientId) {\n")
+	sb.WriteString("       // Several lines of context...\n")
+	sb.WriteString("   -   if ($condition) {\n")
+	sb.WriteString("   +   if ($condition && $additionalCheck) {\n")
+	sb.WriteString("       // More context lines...\n")
+	sb.WriteString("   }\n")
+	sb.WriteString("   ```\n\n")
+	sb.WriteString("4. **Non-Blocker Issues**: List the non-blocker issues that are still important to address. Format as follows:\n\n")
+	sb.WriteString("   ### 1. [Suggestion Title]\n")
+	sb.WriteString("   **Suggestion**: [Description of the suggestion]\n\n")
+	sb.WriteString("   **Benefit**: [Explanation of the benefit]\n\n")
+	sb.WriteString("   **File**: /full/path/to/file.php\n")
+	sb.WriteString("   **Line**: ~142 (approximate line number)\n\n")
+	sb.WriteString("   **Example**:\n")
+	sb.WriteString("   ```diff\n")
+	sb.WriteString("   // Show function/class signature and at least 3-5 lines of context before the change\n")
+	sb.WriteString("   public function processPayment($clientId) {\n")
+	sb.WriteString("       // Several lines of context...\n")
+	sb.WriteString("   -   if ($condition) {\n")
+	sb.WriteString("   +   if ($condition && $additionalCheck) {\n")
+	sb.WriteString("       // More context lines...\n")
+	sb.WriteString("   }\n")
+	sb.WriteString("   ```\n\n")
+	sb.WriteString("5. For each issue, also include these fields in your internal analysis (but they don't need to appear in the final output):\n\n")
 	sb.WriteString("   - Source: Which review phase identified it (Syntax, Functionality, or Defensive)\n")
 	sb.WriteString("   - Confidence: High/Medium/Low based on how clearly it was identified\n")
-	sb.WriteString("   - Description: Why this is an issue\n")
-	sb.WriteString("   - Code: A pure GitHub-style diff block showing the changes needed\n\n")
+	sb.WriteString("   - Current Logic: Explain what the current code is trying to accomplish\n")
+	sb.WriteString("   - Functionality Check: Confirm that the suggested change preserves all existing functionality\n\n")
 	sb.WriteString("   Example format:\n\n")
 	sb.WriteString("   **Issue: [Brief Title]**\n")
 	sb.WriteString("   - **Source**: Syntax Review\n")
-	sb.WriteString("   - **Confidence**: High\n")
-	sb.WriteString("   - **Description**: [Why this is a problem]\n")
+	sb.WriteString("   - **Confidence**: High - Brief explanation of confidence level\n")
+	sb.WriteString("   - **Description**: [Detailed explanation of why this is a problem and what edge cases it addresses]\n")
+	sb.WriteString("   - **Current Logic**: [Explain what the current code is trying to accomplish]\n")
+	sb.WriteString("   - **Functionality Check**: [Confirm that the suggested change preserves all existing functionality]\n")
+	sb.WriteString("   - **File**: app/PayrollServices/Silo/Client/Domain/PayCycleDomain.php\n")
+	sb.WriteString("   - **Line**: ~142 (approximate line number)\n")
 	sb.WriteString("   - **Code**:\n")
 	sb.WriteString("   ```diff\n")
-	sb.WriteString("   - $oldVariable = doSomething();\n")
-	sb.WriteString("   + $newVariable = doSomethingBetter();\n")
-	sb.WriteString("   + $additionalLine = handleEdgeCase();\n")
+	sb.WriteString("   /**\n")
+	sb.WriteString("    * Process a payment for the given client ID\n")
+	sb.WriteString("    * @param int $clientId The client ID\n")
+	sb.WriteString("    * @return PaymentStatus\n")
+	sb.WriteString("    */\n")
+	sb.WriteString("   public function processPayment($clientId) {\n")
+	sb.WriteString("       $client = $this->getClient($clientId);\n")
+	sb.WriteString("       $account = $client->getAccount();\n")
+	sb.WriteString("       \n")
+	sb.WriteString("       // Check if client has sufficient balance\n")
+	sb.WriteString("   -   $balance = $this->getBalance($client);\n")
+	sb.WriteString("   -   if ($balance > 0) {\n")
+	sb.WriteString("   +   $balance = $this->getBalanceWithRetry($client);\n")
+	sb.WriteString("   +   if ($balance !== null && $balance > 0) {\n")
+	sb.WriteString("           $this->processPaymentWithBalance($client, $balance);\n")
+	sb.WriteString("       } else {\n")
+	sb.WriteString("           $this->logInsufficientFunds($client);\n")
+	sb.WriteString("       }\n")
+	sb.WriteString("       \n")
+	sb.WriteString("       return $this->getPaymentStatus($client);\n")
+	sb.WriteString("   }\n")
 	sb.WriteString("   ```\n\n")
-	sb.WriteString("   IMPORTANT: Use pure diff format. Do NOT include comments like \"// Original\" or \"// Fixed\". Just show the actual code changes with - and + prefixes.\n")
+	sb.WriteString("   IMPORTANT: Use pure diff format. Do NOT include comments like \"// Original\" or \"// Fixed\". Just show the actual code changes with - and + prefixes. Always include enough surrounding code to help developers locate the right spot.\n")
 
 	sb.WriteString("Use GitHub-flavored markdown with appropriate formatting:\n\n")
 	sb.WriteString("- Use `##` and `###` for section headers\n")
