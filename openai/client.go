@@ -14,17 +14,28 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
+// HTTPClient is an interface for HTTP clients
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// TokenCounter is an interface for token counting
+type TokenCounter interface {
+	CountText(text, model string) (int, error)
+	CountMessages(messages []openai.ChatCompletionMessage, model string) (int, error)
+}
+
 // Client represents an OpenAI API client
 type Client struct {
 	apiKey       string
-	httpClient   *http.Client
+	httpClient   HTTPClient
 	baseURL      string
 	model        string
-	tokenCounter *tokens.Counter
+	tokenCounter TokenCounter
 }
 
 // NewClient creates a new OpenAI client
-func NewClient(apiKey string, model string) *Client {
+func NewClient(apiKey, model string) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
