@@ -39,7 +39,7 @@ func NewClient(apiKey, model string) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 90 * time.Second,
 		},
 		baseURL:      "https://api.openai.com/v1",
 		model:        model,
