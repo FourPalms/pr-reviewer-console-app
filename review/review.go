@@ -1263,7 +1263,7 @@ func (w *Workflow) Run() error {
 	logger.Success("Original file content collection completed")
 
 	// Step 3: Analyze original implementation
-	logger.Section("CODE ANALYSIS")
+	logger.Section("PREVIOUS IMPLEMENTATION ANALYSIS")
 	logger.Step("Analyzing original implementation")
 	// Get the number of files to analyze from the recommended file order
 	orderedFiles, err := w.ParseRecommendedFileOrder()
@@ -1282,7 +1282,6 @@ func (w *Workflow) Run() error {
 		return fmt.Errorf("error analyzing original implementation: %w", err)
 	}
 	// Add a blank line before the success message
-	fmt.Println()
 	logger.Success("Original implementation analysis completed")
 
 	// Step 4: Synthesize original implementation
