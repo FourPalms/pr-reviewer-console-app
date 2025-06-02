@@ -965,8 +965,67 @@ func (w *Workflow) GenerateDefensiveReviewPrompt() string {
 
 // GenerateFinalSummaryPrompt creates a prompt for the final summary step
 func (w *Workflow) GenerateFinalSummaryPrompt() string {
-	// This will be implemented in Phase 2
-	return ""
+	// Read the existing review result file
+	reviewPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+	reviewContent, err := os.ReadFile(reviewPath)
+	if err != nil {
+		logger.Debug("Warning: Could not read review file: %v", err)
+		reviewContent = []byte("No review content available.")
+	}
+
+	// Build the prompt using a string builder for better maintainability
+	var sb strings.Builder
+
+	// Overview section
+	sb.WriteString("# PR Review Summary Generation\n\n")
+	sb.WriteString("You are a Senior Engineer creating a final summary of a PR review for GitHub. ")
+	sb.WriteString("Your task is to synthesize the machine-generated review phases into a concise, actionable, and professional summary. ")
+	sb.WriteString("The team values clear communication, actionable feedback, and a focus on what matters most.\n\n")
+
+	// Instructions section
+	sb.WriteString("## HOW TO CREATE THE SUMMARY\n\n")
+	sb.WriteString("As a senior engineer, ask: what are the blocker issues? Issues that would block this from release until fixes are applied?\n\n")
+	sb.WriteString("Ask: what issues are 'Non Blockers', but still important to address?\n\n")
+	sb.WriteString("Ask: How can I best summarize the findings in a concise, actionable, and professional manner?\n\n")
+
+	// Format section
+	sb.WriteString("## Format Guidelines\n\n")
+	sb.WriteString("Structure your summary with these sections:\n\n")
+	sb.WriteString("1. **Overview**: A brief assessment of the PR quality and purpose (2-3 sentences).\n\n")
+	sb.WriteString("2. **Positive Aspects**: Highlight what was done well (if applicable).\n\n")
+	sb.WriteString("3. **Blocker Issues**: List the blocker issues that would prevent release.\n\n")
+	sb.WriteString("4. **Non-Blocker Issues**: List the non-blocker issues that are still important to address.\n\n")
+	sb.WriteString("5. FOR EACH issue, list why this is an issue, a code block suggestion on how to fix it, etc.\n\n")
+
+	sb.WriteString("Use GitHub-flavored markdown with appropriate formatting:\n\n")
+	sb.WriteString("- Use `##` and `###` for section headers\n")
+	sb.WriteString("- Use bullet points (`*`) for lists\n")
+	sb.WriteString("- Use code blocks with syntax highlighting for code examples\n")
+	sb.WriteString("- Use bold and italic for emphasis\n")
+	sb.WriteString("- Use tables for structured information if helpful\n\n")
+
+	// Context section
+	sb.WriteString("## Context\n\n")
+
+	// Ticket details if available
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("### Jira Ticket\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+		sb.WriteString("\n\n")
+	}
+
+	// Design document if available
+	if w.Ctx.DesignDocContent != "" {
+		sb.WriteString("### Design Document\n\n")
+		sb.WriteString("A design document was provided for this PR.\n\n")
+	}
+
+	// Review content
+	sb.WriteString("### Review Content\n\n")
+	sb.WriteString("The following is the machine-generated review content to synthesize:\n\n")
+	sb.WriteString(string(reviewContent))
+
+	return sb.String()
 }
 
 // GenerateSyntaxReview generates a review focusing on PHP syntax and best practices
@@ -1199,7 +1258,38 @@ func (w *Workflow) GenerateDefensiveReview() error {
 
 // GenerateFinalSummary generates a human-friendly summary of all reviews
 func (w *Workflow) GenerateFinalSummary() error {
-	// This will be implemented in Phase 3
+	// 1. Generate the prompt
+	prompt := w.GenerateFinalSummaryPrompt()
+
+	// 2. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		logger.Debug("Warning: Could not count tokens in final summary prompt: %v", err)
+	} else {
+		logger.Verbose("Final summary prompt contains %d tokens", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			logger.Debug("Warning: Final summary prompt is very large (%d tokens)", tokenCount)
+		}
+	}
+
+	// 3. Send to LLM for summary generation
+	logger.Debug("Generating final summary...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating final summary: %w", err)
+	}
+
+	// 4. Create the output file
+	outputPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-final-summary.md", w.Ctx.Ticket))
+
+	// 5. Write the result to a file
+	err = os.WriteFile(outputPath, []byte(response), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write final summary: %w", err)
+	}
+
+	logger.Debug("Final summary saved")
+	logger.Debug("Output path: %s", outputPath)
 	return nil
 }
 
