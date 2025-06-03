@@ -1,4 +1,4 @@
-.PHONY: build test clean run run-review setup-hooks check clone-repo pull-repo review diff-pr list-changes status
+.PHONY: build test clean run run-review setup-hooks check clone-repo pull-repo review diff-pr list-changes status revive
 
 # Default Go build flags
 GOFLAGS := -v
@@ -184,6 +184,12 @@ list-changes:
 	echo "\`\`\`" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	echo "File list generated at .context/reviews/$(TICKET)-files.md"
 
+# Run revive linter
+revive:
+	@echo "Running revive linter..."
+	@which revive > /dev/null || (echo "Error: revive not found. Install with: go install github.com/mgechev/revive@v1.3.2" && exit 1)
+	@revive -formatter friendly ./...
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -195,6 +201,7 @@ help:
 	@echo "  deps        - Install dependencies"
 	@echo "  fmt         - Format code"
 	@echo "  lint        - Run linter"
+	@echo "  revive      - Run revive linter"
 	@echo "  check       - Compile without producing executable"
 	@echo "  setup-hooks - Configure Git to use project hooks"
 	@echo "  clone-repo  - Clone a GitHub repository (usage: make clone-repo REPO=username/repo-name)"
