@@ -141,6 +141,13 @@ func AnalysisCompleted(workerNum int, filename string) {
 	}
 }
 
+// AnalysisFailure prints a message when a file analysis fails
+func AnalysisFailure(workerNum int, filename string, reason string) {
+	if verbosity >= VerbosityNormal {
+		fmt.Printf("  [%d] ✗ Failure: %s - %s\n", workerNum, filename, reason)
+	}
+}
+
 // Success prints a success message
 func Success(format string, args ...interface{}) {
 	if verbosity >= VerbosityNormal {

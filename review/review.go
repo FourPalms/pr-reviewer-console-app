@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jeremyhunt/agent-runner/logger"
 	"github.com/jeremyhunt/agent-runner/openai"
@@ -192,18 +193,22 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 
 // GetCommonPromptIntro returns a standardized introduction for prompts
 func (w *Workflow) GetCommonPromptIntro(role string) string {
+	// Common beginning for all roles
+	commonIntro := "You are a skeptical and methodical Sr Developer with expertise in PHP and general software development. "
+	commonIntro += "You assume there are issues, misses, and mistakes unless proven otherwise. "
+
+	// Role-specific additions
 	switch role {
 	case "reviewer":
-		return "You are a Senior Engineer with expertise in PHP and general software development. " +
-			"You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. "
+		return commonIntro + "You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. "
 	case "analyzer":
-		return "You are a senior PHP developer analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
+		return commonIntro + "You're analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
 	case "discoverer":
-		return "You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns."
+		return commonIntro + "You're reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns."
 	case "summarizer":
-		return "You are a Senior Engineer creating a final summary of a PR review for GitHub. "
+		return commonIntro + "You're creating a final summary of a PR review for GitHub. "
 	default:
-		return "You are a Senior Engineer with expertise in PHP and general software development. "
+		return commonIntro
 	}
 }
 
@@ -403,6 +408,10 @@ func (w *Workflow) ParseChangedFiles() ([]string, error) {
 	// ## Modified Files
 	// app/PayrollServices/Silo/Client/Domain/PayCycleDomain.php
 	// ...
+	// ## Added Files
+	// ...
+	// ## Deleted Files
+	// ...
 
 	// Read the files content
 	filesContent := w.Ctx.FilesContent
@@ -410,23 +419,71 @@ func (w *Workflow) ParseChangedFiles() ([]string, error) {
 		return nil, fmt.Errorf("files content is empty")
 	}
 
-	// Find all file paths in the content
-	// Looking for lines that start with a file path
-	filePattern := "(?m)^([a-zA-Z0-9_\\-./]+\\.[a-zA-Z0-9]+)$"
-	fileRegex := regexp.MustCompile(filePattern)
-	matches := fileRegex.FindAllStringSubmatch(filesContent, -1)
-
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("could not find any filenames in files content")
+	// Split the content into sections
+	sections := map[string][]string{
+		"Modified": {},
+		"Added":    {},
+		"Deleted":  {},
 	}
 
-	// Extract the filenames from the regex matches
-	files := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) >= 2 {
-			files = append(files, match[1])
+	// Parse the file content into sections
+	scanner := bufio.NewScanner(strings.NewReader(filesContent))
+	currentSection := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if this is a section header
+		if strings.HasPrefix(line, "## ") {
+			sectionName := strings.TrimPrefix(line, "## ")
+			currentSection = sectionName
+			continue
+		}
+
+		// Skip empty lines and lines that don't look like file paths
+		if line == "" || !strings.Contains(line, ".") {
+			continue
+		}
+
+		// Add the file to the appropriate section
+		switch currentSection {
+		case "Modified Files":
+			sections["Modified"] = append(sections["Modified"], line)
+		case "Added Files":
+			sections["Added"] = append(sections["Added"], line)
+		case "Deleted Files":
+			sections["Deleted"] = append(sections["Deleted"], line)
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error scanning files content: %w", err)
+	}
+
+	// For original implementation analysis, we only want modified and deleted files
+	// since we need to analyze what they were like before the changes
+	files := append(sections["Modified"], sections["Deleted"]...)
+
+	// If we didn't find any files, try the old regex method as a fallback
+	if len(files) == 0 {
+		logger.Debug("No files found in sections, trying regex fallback")
+		filePattern := "(?m)^([a-zA-Z0-9_\\-./]+\\.[a-zA-Z0-9]+)$"
+		fileRegex := regexp.MustCompile(filePattern)
+		matches := fileRegex.FindAllStringSubmatch(filesContent, -1)
+
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("could not find any filenames in files content")
+		}
+
+		// Extract the filenames from the regex matches
+		for _, match := range matches {
+			if len(match) >= 2 {
+				files = append(files, match[1])
+			}
+		}
+	}
+
+	logger.Debug("Found %d files for analysis (modified: %d, deleted: %d, added files excluded)",
+		len(files), len(sections["Modified"]), len(sections["Deleted"]))
 
 	return files, nil
 }
@@ -508,7 +565,7 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 	sb.WriteString("# Original Implementation Analysis\n\n")
 	sb.WriteString("This document provides an analysis of how the code worked before the changes in this PR.\n\n")
 
-	// 3. Process files using a worker pool
+	// 3. Process files individually with goroutines
 	type analysisResult struct {
 		file     string
 		analysis string
@@ -524,90 +581,97 @@ func (w *Workflow) AnalyzeOriginalImplementation() error {
 
 	// Create a WaitGroup to track when all files have been processed
 	var wg sync.WaitGroup
-	wg.Add(len(orderedFiles))
 
-	// Create a channel for job distribution
-	jobs := make(chan int, len(orderedFiles))
-
-	// Determine the number of workers (max 10)
-	numWorkers := 10
-	if len(orderedFiles) < numWorkers {
-		numWorkers = len(orderedFiles)
-	}
-
-	// Create an atomic counter for active workers
+	// Create an atomic counter for active goroutines
 	var activeWorkers int32
 
 	// We're already logging this in the Step function, so we don't need to log it here
 
-	// Launch worker goroutines
-	for workerID := 0; workerID < numWorkers; workerID++ {
-		go func(id int) {
-			// Process jobs until the channel is closed
-			for i := range jobs {
-				file := orderedFiles[i]
+	// Launch a goroutine for each file
+	for i, file := range orderedFiles {
+		// Increment the WaitGroup counter
+		wg.Add(1)
 
-				// Increment active workers counter
-				atomic.AddInt32(&activeWorkers, 1)
+		// Create a goroutine for this file
+		go func(index int, filename string) {
+			// Increment active workers counter
+			atomic.AddInt32(&activeWorkers, 1)
+			workerNum := atomic.LoadInt32(&activeWorkers)
 
-				// Print progress (protected by mutex to avoid garbled output)
-				resultsMutex.Lock()
-				logger.AnalysisItem(id+1, file) // Use worker ID + 1 so it starts from 1 instead of 0
-				// Only print debug info in debug mode
-				if logger.IsDebugEnabled() {
-					logger.Debug("[Worker %d] Analyzing file %d/%d: %s (Active workers: %d)",
-						id, i+1, len(orderedFiles), file, atomic.LoadInt32(&activeWorkers))
-				}
-				resultsMutex.Unlock()
-
-				// Get original file content
-				content, err := w.GetOriginalFileContent(file)
-				if err != nil {
+			// Recover from any panics in this goroutine
+			defer func() {
+				if r := recover(); r != nil {
+					panicErr := fmt.Sprintf("panic: %v", r)
 					resultsMutex.Lock()
-					logger.Debug("Warning: could not get content for %s: %v", file, err)
+					logger.Debug("PANIC in goroutine processing %s: %v", filename, r)
+					logger.AnalysisFailure(int(workerNum), filename, panicErr)
 					resultsMutex.Unlock()
 
 					// Store the error result
-					results[i] = analysisResult{file: file, err: err, index: i}
-					wg.Done()
-					continue
+					results[index] = analysisResult{file: filename, err: fmt.Errorf(panicErr), index: index}
 				}
+			}()
 
-				// Analyze with LLM
-				analysis, err := w.AnalyzeFile(file, content)
-				if err != nil {
+			// Make sure we mark this file as done when the goroutine exits
+			defer func() {
+				// Only log completion if there was no error (errors are logged separately)
+				if results[index].err == nil {
 					resultsMutex.Lock()
-					logger.Debug("Warning: analysis failed for %s: %v", file, err)
+					logger.AnalysisCompleted(int(workerNum), filename)
 					resultsMutex.Unlock()
-
-					// Store the error result
-					results[i] = analysisResult{file: file, err: err, index: i}
-					wg.Done()
-					continue
 				}
-
-				// Store the successful result
-				results[i] = analysisResult{file: file, analysis: analysis, index: i}
-
-				// Log completion with the same mutex protection
-				resultsMutex.Lock()
-				logger.AnalysisCompleted(id+1, file)
-				resultsMutex.Unlock()
 
 				// Decrement active workers counter
 				atomic.AddInt32(&activeWorkers, -1)
+
 				wg.Done()
+			}()
+
+			// Print progress (protected by mutex to avoid garbled output)
+			resultsMutex.Lock()
+			logger.AnalysisItem(int(workerNum), filename)
+			// Only print debug info in debug mode
+			if logger.IsDebugEnabled() {
+				logger.Debug("[Worker %d] Analyzing file %d/%d: %s (Active workers: %d)",
+					workerNum, index+1, len(orderedFiles), filename, atomic.LoadInt32(&activeWorkers))
 			}
-		}(workerID)
-	}
+			resultsMutex.Unlock()
 
-	// Send jobs to the workers
-	for i := range orderedFiles {
-		jobs <- i
-	}
+			// Get original file content
+			content, err := w.GetOriginalFileContent(filename)
+			if err != nil {
+				errMsg := fmt.Sprintf("could not get content: %v", err)
+				resultsMutex.Lock()
+				logger.Debug("Warning: could not get content for %s: %v", filename, err)
+				logger.AnalysisFailure(int(workerNum), filename, errMsg)
+				resultsMutex.Unlock()
 
-	// Close the jobs channel to signal that no more jobs are coming
-	close(jobs)
+				// Store the error result
+				results[index] = analysisResult{file: filename, err: err, index: index}
+				return
+			}
+
+			// Analyze with LLM
+			analysis, err := w.AnalyzeFile(filename, content)
+			if err != nil {
+				errMsg := fmt.Sprintf("LLM analysis failed: %v", err)
+				resultsMutex.Lock()
+				logger.Debug("Warning: analysis failed for %s: %v", filename, err)
+				logger.AnalysisFailure(int(workerNum), filename, errMsg)
+				resultsMutex.Unlock()
+
+				// Store the error result
+				results[index] = analysisResult{file: filename, err: err, index: index}
+				return
+			}
+
+			// Store the successful result
+			results[index] = analysisResult{file: filename, analysis: analysis, index: index}
+		}(i, file)
+
+		// Wait a bit between launching goroutines to avoid API overload
+		time.Sleep(250 * time.Millisecond)
+	}
 
 	// Wait for all files to be processed
 	wg.Wait()
@@ -1036,6 +1100,9 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 	sb.WriteString(w.GetCommonPromptIntro("summarizer"))
 	sb.WriteString("Your task is to synthesize the machine-generated review phases into a concise, actionable, and professional summary. ")
 	sb.WriteString("The team values clear communication, actionable feedback, and a focus on what matters most.\n\n")
+	sb.WriteString("CRITICAL INSTRUCTION: Your output MUST be in clean GitHub-flavored markdown format ONLY. ")
+	sb.WriteString("DO NOT use any XML-style tags (like <SYNTAX_REVIEW> or <CRITICAL_ISSUES>) in your response. ")
+	sb.WriteString("The output should be a professional markdown document that looks good when viewed on GitHub.\n\n")
 
 	// Instructions section
 	sb.WriteString("## HOW TO CREATE THE SUMMARY\n\n")
@@ -1127,12 +1194,20 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 	sb.WriteString("   ```\n\n")
 	sb.WriteString("   IMPORTANT: Use pure diff format. Do NOT include comments like \"// Original\" or \"// Fixed\". Just show the actual code changes with - and + prefixes. Always include enough surrounding code to help developers locate the right spot.\n")
 
-	sb.WriteString("Use GitHub-flavored markdown with appropriate formatting:\n\n")
+	sb.WriteString("## IMPORTANT FORMATTING RULES\n\n")
+	sb.WriteString("1. Use ONLY GitHub-flavored markdown - NO XML tags or custom formats.\n")
+	sb.WriteString("2. DO NOT use any XML-style tags like <SYNTAX_REVIEW>, <CRITICAL_ISSUES>, etc.\n")
+	sb.WriteString("3. DO NOT include any XML or HTML formatting in your response.\n")
+	sb.WriteString("4. Format your response as clean, professional GitHub-flavored markdown ONLY.\n\n")
+
+	sb.WriteString("Use these markdown formatting elements:\n\n")
 	sb.WriteString("- Use `##` and `###` for section headers\n")
 	sb.WriteString("- Use bullet points (`*`) for lists\n")
 	sb.WriteString("- Use code blocks with syntax highlighting for code examples\n")
 	sb.WriteString("- Use bold and italic for emphasis\n")
 	sb.WriteString("- Use tables for structured information if helpful\n\n")
+
+	sb.WriteString("REMEMBER: Your output should be a clean, professional markdown document that looks good on GitHub. NO XML TAGS.\n\n")
 
 	// Context section
 	sb.WriteString("## Context\n\n")
@@ -1493,7 +1568,7 @@ func (w *Workflow) Run() error {
 		// Add a blank line after the message
 		fmt.Println()
 	} else {
-		logger.StepDetail("Starting analysis of %d files using up to %d concurrent workers", len(orderedFiles), 5)
+		logger.StepDetail("Starting analysis of %d files using individual goroutines", len(orderedFiles))
 		// Add a blank line after the message
 		fmt.Println()
 	}
