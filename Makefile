@@ -109,7 +109,9 @@ review:
 		echo "Repository $$REPO_NAME not found, cloning first...";\
 		$(MAKE) clone-repo REPO=$(REPO);\
 	fi; \
-	cd .context/projects/$$REPO_NAME && git checkout master && git pull --depth 1 && \
+	cd .context/projects/$$REPO_NAME && \
+	(git checkout master 2>/dev/null || git checkout main 2>/dev/null || (echo "Error: Neither master nor main branch found" && exit 1)) && \
+	git pull --rebase --depth 1 && \
 	echo "Setting up PR branch $(PR-BRANCH)..." && \
 	git fetch origin $(PR-BRANCH) --depth 100 && git checkout FETCH_HEAD -B review-$(TICKET) && \
 	echo "Repository is ready for review with master and PR branch $(PR-BRANCH)." && \
@@ -118,7 +120,7 @@ review:
 	$(MAKE) list-changes REPO=$(REPO) PR-BRANCH=$(PR-BRANCH) && \
 	$(MAKE) run-review TICKET=$(TICKET) REPO=$(REPO) BRANCH=review-$(TICKET)
 
-# Generate a diff between master and PR branch
+# Generate a diff between main/master and PR branch
 # Usage: make diff-pr REPO=username/repo-name PR-BRANCH=username/ticket-number
 diff-pr:
 	@if [ -z "$(REPO)" ]; then \
@@ -130,16 +132,17 @@ diff-pr:
 		exit 1; \
 	fi
 	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
-	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $(TICKET))..."; \
-	mkdir -p .context/reviews; \
+	echo "Generating diff for PR branch $(PR-BRANCH) (Ticket: $(TICKET))...";\
+	mkdir -p $(CURDIR)/.context/reviews;\
 	cd .context/projects/$$REPO_NAME && \
 	echo "Fetching branches with more history..." && \
-	git fetch origin master --depth 100 && \
+	git fetch origin main --depth 100 2>/dev/null || git fetch origin master --depth 100 2>/dev/null && \
 	git fetch origin $(PR-BRANCH) --depth 100 && \
-	echo "Finding common ancestor between master and review-$(TICKET)..." && \
-	MERGE_BASE=$$(git merge-base master review-$(TICKET)) && \
-	echo "Generating diff from common ancestor to PR branch..." && \
-	git diff $$MERGE_BASE..review-$(TICKET) > ../../../.context/reviews/$(TICKET)-diff.md && \
+	echo "Finding common ancestor between main/master and review-$(TICKET)..." && \
+	DEFAULT_BRANCH=$$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@') && \
+	MERGE_BASE=$$(git merge-base $$DEFAULT_BRANCH review-$(TICKET) 2>/dev/null || git merge-base main review-$(TICKET) 2>/dev/null || git merge-base master review-$(TICKET)) && \
+	echo "Generating diff..." && \
+	git diff $$MERGE_BASE..review-$(TICKET) > $(CURDIR)/.context/reviews/$(TICKET)-diff.md && \
 	echo "Diff generated at .context/reviews/$(TICKET)-diff.md"
 
 # Check status of integrations
@@ -159,16 +162,17 @@ list-changes:
 		exit 1; \
 	fi
 	@REPO_NAME=`echo $(REPO) | sed 's/.*\///'`; \
-	echo "Listing changed files for PR branch $(PR-BRANCH) (Ticket: $(TICKET))..."; \
-	mkdir -p $(CURDIR)/.context/reviews; \
+	echo "Listing changed files for PR branch $(PR-BRANCH) (Ticket: $(TICKET))...";\
+	mkdir -p $(CURDIR)/.context/reviews;\
 	cd .context/projects/$$REPO_NAME && \
 	echo "# Changed Files for $(PR-BRANCH)" > $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	echo "Fetching branches with more history..." && \
-	git fetch origin master --depth 100 && \
+	git fetch origin main --depth 100 2>/dev/null || git fetch origin master --depth 100 2>/dev/null && \
 	git fetch origin $(PR-BRANCH) --depth 100 && \
-	echo "Finding common ancestor between master and review-$(TICKET)..." && \
-	MERGE_BASE=$$(git merge-base master review-$(TICKET)) && \
+	echo "Finding common ancestor between main/master and review-$(TICKET)..." && \
+	DEFAULT_BRANCH=$$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@') && \
+	MERGE_BASE=$$(git merge-base $$DEFAULT_BRANCH review-$(TICKET) 2>/dev/null || git merge-base main review-$(TICKET) 2>/dev/null || git merge-base master review-$(TICKET)) && \
 	echo "## Modified Files" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	git diff --name-status $$MERGE_BASE..review-$(TICKET) | grep "^M" | cut -f2 | sort >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
 	echo "" >> $(CURDIR)/.context/reviews/$(TICKET)-files.md && \
