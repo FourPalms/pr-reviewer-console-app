@@ -190,10 +190,27 @@ func (w *Workflow) RunLLMStep(stepName string, promptFunc func() string, outputP
 	return nil
 }
 
+// GetCommonPromptIntro returns a standardized introduction for prompts
+func (w *Workflow) GetCommonPromptIntro(role string) string {
+	switch role {
+	case "reviewer":
+		return "You are a Senior Engineer with expertise in PHP and general software development. " +
+			"You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. "
+	case "analyzer":
+		return "You are a senior PHP developer analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
+	case "discoverer":
+		return "You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns."
+	case "summarizer":
+		return "You are a Senior Engineer creating a final summary of a PR review for GitHub. "
+	default:
+		return "You are a Senior Engineer with expertise in PHP and general software development. "
+	}
+}
+
 // InitialDiscoveryPrompt generates the prompt for the initial discovery step
 func (w *Workflow) InitialDiscoveryPrompt() string {
 	// Base prompt template
-	promptTemplate := `You are a senior software engineer reviewing a pull request in a PHP codebase that uses a custom architecture with silo/service/domain/repository/applicationservice patterns.
+	promptTemplate := `%s
 
 Here is a list of the files that were changed:
 %s
@@ -243,7 +260,7 @@ Format your response in markdown with clear sections and code references.`
 		ticketInstruction = "\n\n## 5. Ticket Alignment\n[Your assessment of how well the changes address the requirements in the ticket]"
 	}
 
-	return fmt.Sprintf(promptTemplate, w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, ticketSection, designDocInstruction, ticketInstruction)
+	return fmt.Sprintf(promptTemplate, w.GetCommonPromptIntro("discoverer"), w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, ticketSection, designDocInstruction, ticketInstruction)
 }
 
 // CollectOriginalFileContents reads the original content of modified and deleted files
@@ -444,7 +461,7 @@ func (w *Workflow) GetOriginalFileContent(file string) (string, error) {
 
 // FileAnalysisPrompt generates a prompt for analyzing a single file
 func (w *Workflow) FileAnalysisPrompt(filename, content string) string {
-	prompt := "You are a senior PHP developer analyzing a file from a codebase that uses a custom silo/service/domain/repository/applicationservice architecture.\n\n"
+	prompt := w.GetCommonPromptIntro("analyzer")
 	prompt += "Your goal is to understand how the specific feature being changed in this PR worked BEFORE the changes were applied.\n\n"
 	prompt += fmt.Sprintf("File: %s\n\n", filename)
 	prompt += "Here's the original content of the file before changes:\n```php\n"
@@ -705,8 +722,7 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 
 	// Overview section - common across all review types
 	sb.WriteString("# Code Review: Syntax and Best Practices\n\n")
-	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
-	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString(w.GetCommonPromptIntro("reviewer"))
 	sb.WriteString("Your goal is to identify syntax issues and best practice violations that could cause the team problems. ")
 	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
 
@@ -807,8 +823,7 @@ func (w *Workflow) GenerateFunctionalityReviewPrompt() string {
 
 	// Overview section - common across all review types
 	sb.WriteString("# Code Review: Implementation vs Requirements\n\n")
-	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
-	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString(w.GetCommonPromptIntro("reviewer"))
 	sb.WriteString("Your goal is to identify missing or incorrect functionality that could cause the team problems. ")
 	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
 
@@ -904,8 +919,7 @@ func (w *Workflow) GenerateDefensiveReviewPrompt() string {
 
 	// Overview section - common across all review types
 	sb.WriteString("# Code Review: Defensive Programming\n\n")
-	sb.WriteString("You are a Senior Engineer with expertise in PHP and general software development. ")
-	sb.WriteString("You're reviewing code for other senior developers who value helpfulness, brevity, and professionalism. ")
+	sb.WriteString(w.GetCommonPromptIntro("reviewer"))
 	sb.WriteString("Your goal is to identify security issues, error handling gaps, and edge cases that could cause production problems. ")
 	sb.WriteString("Focus on substance over form, and avoid stating things that would be obvious to experienced developers.\n\n")
 
@@ -1019,7 +1033,7 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 
 	// Overview section
 	sb.WriteString("# PR Review Summary Generation\n\n")
-	sb.WriteString("You are a Senior Engineer creating a final summary of a PR review for GitHub. ")
+	sb.WriteString(w.GetCommonPromptIntro("summarizer"))
 	sb.WriteString("Your task is to synthesize the machine-generated review phases into a concise, actionable, and professional summary. ")
 	sb.WriteString("The team values clear communication, actionable feedback, and a focus on what matters most.\n\n")
 

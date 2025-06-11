@@ -68,13 +68,7 @@ agent-runner/
 
 The agent-runner is designed to analyze pull requests and provide detailed code reviews using LLMs. It can be run in two ways:
 
-#### Using the Go command directly:
-
-```
-go run ./cmd/agent --review --ticket=TICKET-NUMBER --repo=Company/repo-name [--branch=username/TICKET-NUMBER]
-```
-
-#### Using the Makefile (recommended):
+#### Using the Makefile:
 
 ```
 make review TICKET=TICKET-NUMBER REPO=Company/repo-name BRANCH=username/TICKET-NUMBER
