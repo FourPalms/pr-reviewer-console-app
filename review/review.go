@@ -228,10 +228,13 @@ Please provide your analysis in the following format with EXACTLY these section 
 ## 1. Comprehensive Summary
 [Your one-paragraph summary of the changes here]
 
-## 2. Flow of Logic
+## 2. Framework Detection
+[Identify the framework(s) being used (e.g., Laravel, Symfony, CodeIgniter, custom) and provide specific evidence from the code that supports your identification]
+
+## 3. Flow of Logic
 [Your trace of the logic flow through files and functions here]
 
-## 3. Recommended File Order
+## 4. Recommended File Order
 [Your recommended order for analyzing the files here]%s%s
 
 For the recommended file order section:
@@ -254,7 +257,7 @@ Format your response in markdown with clear sections and code references.`
 	designDocInstruction := ""
 	if w.Ctx.DesignDocContent != "" {
 		designDocSection = fmt.Sprintf("\n\n## Design Document\n\nThe following design document provides context for this PR:\n\n%s\n\nPlease consider this design document when analyzing the PR changes.", w.Ctx.DesignDocContent)
-		designDocInstruction = "\n\n## 4. Design Alignment\n[Your assessment of how well the changes align with the design document]"
+		designDocInstruction = "\n\n## 5. Design Alignment\n[Your assessment of how well the changes align with the design document]"
 	}
 
 	// Add ticket details if available
@@ -262,7 +265,7 @@ Format your response in markdown with clear sections and code references.`
 	ticketInstruction := ""
 	if w.Ctx.TicketDetails != "" {
 		ticketSection = fmt.Sprintf("\n\n## Jira Ticket\n\nThe following Jira ticket provides context for this PR:\n\n%s\n\nPlease consider this ticket information when analyzing the PR changes.", w.Ctx.TicketDetails)
-		ticketInstruction = "\n\n## 5. Ticket Alignment\n[Your assessment of how well the changes address the requirements in the ticket]"
+		ticketInstruction = "\n\n## 6. Ticket Alignment\n[Your assessment of how well the changes address the requirements in the ticket]"
 	}
 
 	return fmt.Sprintf(promptTemplate, w.GetCommonPromptIntro("discoverer"), w.Ctx.FilesContent, w.Ctx.DiffContent, designDocSection, ticketSection, designDocInstruction, ticketInstruction)
@@ -795,7 +798,9 @@ func (w *Workflow) GenerateSyntaxReviewPrompt() string {
 	sb.WriteString("For this syntax review, focus on:\n\n")
 	sb.WriteString("1. **Syntax Issues**: Identify errors that would cause runtime failures, typos in names, missing syntax elements, and namespace issues.\n\n")
 	sb.WriteString("2. **Logic and Variable Usage**: Examine parameter usage, type handling, null/undefined access, conditional logic, and error handling patterns.\n\n")
-	sb.WriteString("3. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
+	sb.WriteString("3. **Duplicate Implementations**: Check if the PR is implementing functionality that already exists elsewhere in the codebase. Look for similar class/method names or functionality across different namespaces.\n\n")
+	sb.WriteString("4. **Namespace Conflicts**: Identify any duplicate class/interface names across different namespaces that could cause confusion or import conflicts.\n\n")
+	sb.WriteString("5. **Review Limitations**: Explicitly state if you have sufficient context and what additional information would improve the review.\n\n")
 
 	// Machine consumption format section
 	sb.WriteString("## Machine Consumption Format\n\n")
@@ -1092,14 +1097,24 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 		reviewContent = []byte("No review content available.")
 	}
 
+	// Read the validation result file
+	validationPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-validation.md", w.Ctx.Ticket))
+	validationContent, err := os.ReadFile(validationPath)
+	if err != nil {
+		logger.Debug("Warning: Could not read validation file: %v", err)
+		validationContent = []byte("No validation content available.")
+	}
+
 	// Build the prompt using a string builder for better maintainability
 	var sb strings.Builder
 
 	// Overview section
 	sb.WriteString("# PR Review Summary Generation\n\n")
 	sb.WriteString(w.GetCommonPromptIntro("summarizer"))
-	sb.WriteString("Your task is to synthesize the machine-generated review phases into a concise, actionable, and professional summary. ")
+	sb.WriteString("Your task is to synthesize the machine-generated review phases AND their validation into a concise, actionable, and professional summary. ")
 	sb.WriteString("The team values clear communication, actionable feedback, and a focus on what matters most.\n\n")
+	sb.WriteString("IMPORTANT: The validation results should take precedence over the original review when there are conflicts. ")
+	sb.WriteString("Focus on confirmed issues, adjusted issues with their corrections, and any newly identified issues from the validation step.\n\n")
 	sb.WriteString("CRITICAL INSTRUCTION: Your output MUST be in clean GitHub-flavored markdown format ONLY. ")
 	sb.WriteString("DO NOT use any XML-style tags (like <SYNTAX_REVIEW> or <CRITICAL_ISSUES>) in your response. ")
 	sb.WriteString("The output should be a professional markdown document that looks good when viewed on GitHub.\n\n")
@@ -1226,9 +1241,14 @@ func (w *Workflow) GenerateFinalSummaryPrompt() string {
 	}
 
 	// Review content
-	sb.WriteString("### Review Content\n\n")
-	sb.WriteString("The following is the machine-generated review content to synthesize:\n\n")
+	sb.WriteString("### Original Review Content\n\n")
+	sb.WriteString("The following is the machine-generated review content:\n\n")
 	sb.WriteString(string(reviewContent))
+
+	// Validation content
+	sb.WriteString("\n\n### Validation Results\n\n")
+	sb.WriteString("The following is the validation of the review findings, which you should prioritize over the original review when there are conflicts:\n\n")
+	sb.WriteString(string(validationContent))
 
 	return sb.String()
 }
@@ -1461,7 +1481,161 @@ func (w *Workflow) GenerateDefensiveReview() error {
 	return nil
 }
 
-// GenerateFinalSummary generates a human-friendly summary of all reviews
+// ValidateReviewFindings challenges assumptions and validates issues from previous review phases
+func (w *Workflow) ValidateReviewFindings() error {
+	// 1. Read the existing review result file
+	reviewPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-review-result.md", w.Ctx.Ticket))
+	reviewContent, err := os.ReadFile(reviewPath)
+	if err != nil {
+		return fmt.Errorf("error reading review file for validation: %w", err)
+	}
+
+	// 2. Read the diff file
+	diffPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-diff.md", w.Ctx.Ticket))
+	diffContent, err := os.ReadFile(diffPath)
+	if err != nil {
+		logger.Debug("Warning: Could not read diff file for validation: %v", err)
+		diffContent = []byte("No diff content available.")
+	}
+
+	// 3. Generate the validation prompt
+	prompt := w.GenerateValidationPrompt(string(reviewContent), string(diffContent))
+
+	// 4. Count tokens in the prompt
+	tokenCount, err := w.Ctx.TokenCounter.CountText(prompt, w.Ctx.Model)
+	if err != nil {
+		logger.Debug("Warning: Could not count tokens in validation prompt: %v", err)
+	} else {
+		logger.Verbose("Validation prompt contains %d tokens", tokenCount)
+		if tokenCount > w.Ctx.MaxTokens/2 {
+			logger.Debug("Warning: Validation prompt is very large (%d tokens)", tokenCount)
+		}
+	}
+
+	// 5. Send to LLM for validation
+	logger.Debug("Generating review validation...")
+	response, err := w.Ctx.Client.Complete(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("error generating review validation: %w", err)
+	}
+
+	// 6. Write the validation result to a file
+	validationPath := filepath.Join(w.Ctx.OutputDir, fmt.Sprintf("%s-validation.md", w.Ctx.Ticket))
+	err = os.WriteFile(validationPath, []byte(response), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write review validation: %w", err)
+	}
+
+	logger.Debug("Review validation saved")
+	logger.Debug("Validation path: %s", validationPath)
+	return nil
+}
+
+// GenerateValidationPrompt creates a prompt for the validation step
+func (w *Workflow) GenerateValidationPrompt(reviewContent, diffContent string) string {
+	// Build the prompt using a string builder for better maintainability
+	var sb strings.Builder
+
+	// Overview section
+	sb.WriteString("# PR Review Validation\n\n")
+	sb.WriteString("You are a skeptical and methodical Sr Developer with expertise in PHP and general software development. ")
+	sb.WriteString("You assume there are issues, misses, and mistakes unless proven otherwise. ")
+	sb.WriteString("Your task is to critically evaluate the machine-generated review of a PR and validate or challenge its findings.\n\n")
+
+	// Ticket details if available - show this first for proper context
+	if w.Ctx.TicketDetails != "" {
+		sb.WriteString("## Ticket Context\n\n")
+		sb.WriteString("You are reviewing a PR for the following ticket:\n\n")
+		sb.WriteString(w.Ctx.TicketDetails)
+		sb.WriteString("\n\nKeep this context in mind when evaluating the review findings.\n\n")
+	}
+
+	// Instructions section
+	sb.WriteString("## YOUR TASK\n\n")
+	sb.WriteString("You are given a machine-generated review of a PR. Your job is to act as a second opinion, challenging assumptions and validating or refuting the issues identified.\n\n")
+	sb.WriteString("For each issue identified in the review:\n\n")
+	sb.WriteString("1. **Challenge the evidence**: Is there sufficient evidence in the diff to support this claim?\n")
+	sb.WriteString("2. **Question the severity**: Is the severity rating appropriate given the actual impact?\n")
+	sb.WriteString("3. **Verify the solution**: Would the proposed solution actually fix the issue without introducing new problems?\n")
+	sb.WriteString("4. **Check for false positives**: Is this actually an issue or just a misunderstanding of the code?\n\n")
+
+	sb.WriteString("## APPROACH\n\n")
+	sb.WriteString("1. First, understand the overall PR by examining the diff.\n")
+	sb.WriteString("2. Then, examine each issue identified in the review.\n")
+	sb.WriteString("3. For each issue, decide if you:\n")
+	sb.WriteString("   - **Confirm**: The issue is real and correctly assessed\n")
+	sb.WriteString("   - **Adjust**: The issue is real but needs adjustment (e.g., severity, description)\n")
+	sb.WriteString("   - **Reject**: The issue is not valid or is a false positive\n\n")
+
+	sb.WriteString("## OUTPUT FORMAT\n\n")
+	sb.WriteString("Structure your validation as follows:\n\n")
+	sb.WriteString("```xml\n")
+	sb.WriteString("<VALIDATION_SUMMARY>\n")
+	sb.WriteString("A brief overview of your findings. How many issues did you confirm, adjust, or reject?\n")
+	sb.WriteString("</VALIDATION_SUMMARY>\n\n")
+
+	sb.WriteString("<CONFIRMED_ISSUES>\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("ORIGINAL_SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("CONFIRMED_SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("PROBLEM: Brief description of the issue\n")
+	sb.WriteString("EVIDENCE: Specific evidence from the diff that confirms this issue\n")
+	sb.WriteString("SOLUTION_ASSESSMENT: Is the proposed solution appropriate? Why?\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("</CONFIRMED_ISSUES>\n\n")
+
+	sb.WriteString("<ADJUSTED_ISSUES>\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("ORIGINAL_SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("ADJUSTED_SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("ORIGINAL_PROBLEM: Brief description of the original issue\n")
+	sb.WriteString("ADJUSTED_PROBLEM: Your adjusted description\n")
+	sb.WriteString("ADJUSTMENT_REASON: Why did you adjust this issue?\n")
+	sb.WriteString("EVIDENCE: Specific evidence from the diff\n")
+	sb.WriteString("SOLUTION_ASSESSMENT: Is the proposed solution appropriate? If not, what would be better?\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("</ADJUSTED_ISSUES>\n\n")
+
+	sb.WriteString("<REJECTED_ISSUES>\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("ORIGINAL_SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("ORIGINAL_PROBLEM: Brief description of the original issue\n")
+	sb.WriteString("REJECTION_REASON: Why is this not a valid issue?\n")
+	sb.WriteString("EVIDENCE: Specific evidence from the diff that contradicts this issue\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("</REJECTED_ISSUES>\n\n")
+
+	sb.WriteString("<MISSED_ISSUES>\n")
+	sb.WriteString("<ISSUE>\n")
+	sb.WriteString("FILE: path/to/file.php\n")
+	sb.WriteString("SEVERITY: Critical/Major/Minor\n")
+	sb.WriteString("PROBLEM: Description of an issue that was missed in the original review\n")
+	sb.WriteString("EVIDENCE: Specific evidence from the diff\n")
+	sb.WriteString("SUGGESTED_SOLUTION: How to fix this issue\n")
+	sb.WriteString("</ISSUE>\n")
+	sb.WriteString("</MISSED_ISSUES>\n")
+	sb.WriteString("```\n\n")
+
+	// Context section
+	sb.WriteString("## CONTEXT\n\n")
+
+	// Diff content
+	sb.WriteString("### Diff Content\n\n")
+	sb.WriteString("```diff\n")
+	sb.WriteString(diffContent)
+	sb.WriteString("\n```\n\n")
+
+	// Review content
+	sb.WriteString("### Review Content to Validate\n\n")
+	sb.WriteString(reviewContent)
+
+	return sb.String()
+}
+
+// GenerateFinalSummary generates the final PR review summary
 func (w *Workflow) GenerateFinalSummary() error {
 	// 1. Generate the prompt
 	prompt := w.GenerateFinalSummaryPrompt()
@@ -1501,7 +1675,7 @@ func (w *Workflow) GenerateFinalSummary() error {
 // Run executes the PR review workflow
 func (w *Workflow) Run() error {
 	// Set the total number of steps (we're skipping the token counting step)
-	logger.SetTotalSteps(8)
+	logger.SetTotalSteps(9)
 
 	// Assemble PR context section
 	// Add an extra blank line before the first section
@@ -1636,14 +1810,25 @@ func (w *Workflow) Run() error {
 	fmt.Println()
 	logger.Success("Defensive programming review completed")
 
-	// Step 8: Generate Final Summary
+	// Step 8: Validate Review Findings
+	logger.Step("Validating review findings")
+	logger.StepDetail("Challenging assumptions and validating issues")
+	err = w.ValidateReviewFindings()
+	if err != nil {
+		return fmt.Errorf("error validating review findings: %w", err)
+	}
+	// Add a blank line before the success message
+	fmt.Println()
+	logger.Success("Review validation completed")
+
+	// Step 9: Generate Final Summary
 	logger.Step("Generating final review summary")
 	logger.StepDetail("Creating human-friendly review summary")
 	err = w.GenerateFinalSummary()
 	if err != nil {
 		return fmt.Errorf("error generating final summary: %w", err)
 	}
-	// Add a blank line before the success messages
+	// Add a blank line before the success message
 	fmt.Println()
 	logger.Success("Final review summary saved")
 	logger.Success("PR review generation completed")

@@ -93,14 +93,15 @@ go run ./cmd/agent --status
 When you run the review command, the tool will:
 
 1. Fetch the Jira ticket details for context
-2. Perform initial discovery of the PR changes
+2. Perform initial discovery of the PR changes (including framework detection)
 3. Collect original file contents from the repository
 4. Analyze the original implementation of affected code
 5. Synthesize a comprehensive understanding of the code before changes
 6. Generate a syntax and best practices review
 7. Generate a functionality review against requirements
 8. Generate a defensive programming review
-9. Create a final human-friendly summary for GitHub
+9. Validate review findings by challenging assumptions and confirming issues
+10. Create a final human-friendly summary for GitHub
 
 ### Review Artifacts
 
@@ -108,11 +109,12 @@ All review artifacts are saved in the `.context/reviews/` directory with the tic
 
 - `TICKET-diff.md`: The complete diff between master and PR branch
 - `TICKET-files.md`: List of all changed files with statistics
-- `TICKET-initial-discovery.md`: Initial analysis of the changes
+- `TICKET-initial-discovery.md`: Initial analysis of the changes (including framework detection)
 - `TICKET-original-file-content.md`: Original content of modified files
 - `TICKET-original-implementation.md`: Analysis of the original implementation
 - `TICKET-original-synthesis.md`: Synthesized understanding of the original implementation
 - `TICKET-review-result.md`: Machine-readable review with syntax, functionality, and defensive programming phases
+- `TICKET-validation.md`: Critical evaluation of review findings, challenging assumptions and confirming issues
 - `TICKET-final-summary.md`: GitHub-ready markdown summary of all review phases
 
 These artifacts provide a comprehensive analysis that helps reviewers understand both the original code and the proposed changes.
